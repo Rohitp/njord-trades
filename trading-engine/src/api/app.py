@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +17,11 @@ from src.api.schemas import (
 )
 from src.database.connection import get_session
 from src.database.models import Event, PortfolioState, Position, Trade
+from src.api.middleware import RequestLoggingMiddleware
+from src.utils.logging import get_logger, setup_logging
+
+setup_logging()
+log = get_logger(__name__)
 
 tags_metadata = [
     {"name": "Health", "description": "System health checks"},
@@ -23,12 +30,23 @@ tags_metadata = [
     {"name": "Trades", "description": "Trade history and execution"},
 ]
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    log.info("trading_engine_starting", version="0.1.0")
+    yield
+    log.info("trading_engine_stopping")
+
+
 app = FastAPI(
     title="Trading Engine",
     description="Multi-agent LLM-powered trading system API",
     version="0.1.0",
     openapi_tags=tags_metadata,
+    lifespan=lifespan,
 )
+
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @app.get("/health", tags=["Health"])
@@ -40,10 +58,14 @@ async def health_check(session: AsyncSession = Depends(get_session)) -> dict:
         await session.execute(text("SELECT 1"))
         db_status = "healthy"
     except Exception as e:
+        log.error("health_check_failed", error=str(e))
         db_status = f"unhealthy: {e}"
 
+    status = "ok" if db_status == "healthy" else "degraded"
+    log.debug("health_check", status=status, database=db_status)
+
     return {
-        "status": "ok" if db_status == "healthy" else "degraded",
+        "status": status,
         "database": db_status,
     }
 
