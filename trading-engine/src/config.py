@@ -1,5 +1,9 @@
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Load .env file into environment BEFORE any settings classes are instantiated
+load_dotenv()
 
 
 class DatabaseSettings(BaseSettings):
