@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from enum import Enum
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -9,6 +10,15 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 class Base(DeclarativeBase):
     """Base class for all models."""
     pass
+
+
+class EventType(str, Enum):
+    """Event types for the event log."""
+    SIGNAL_GENERATED = "SignalGenerated"
+    RISK_ASSESSED = "RiskAssessed"
+    VALIDATION_COMPLETE = "ValidationComplete"
+    META_AGENT_DECISION = "MetaAgentDecision"
+    TRADE_EXECUTED = "TradeExecuted"
 
 
 class SystemState(Base):
@@ -46,7 +56,11 @@ class Event(Base):
     __tablename__ = "events"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        server_default=func.now(), 
+        index=True
+    )
     event_type: Mapped[str] = mapped_column(String(100), index=True)
     aggregate_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     data: Mapped[dict] = mapped_column(JSONB, default=dict)
