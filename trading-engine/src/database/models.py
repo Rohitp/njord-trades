@@ -1,6 +1,8 @@
+import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -31,4 +33,25 @@ class SystemState(Base):
     
     __table_args__ = (
         CheckConstraint('id = 1', name='single_row_check'),
+    )
+
+
+class Event(Base):
+    """
+    Append-only event log for complete audit trail.
+
+    Stores all agent decisions, trade executions, and system events.
+    Data and metadata are JSONB for flexible schema.
+    """
+    __tablename__ = "events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    event_type: Mapped[str] = mapped_column(String(100), index=True)
+    aggregate_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict)
+    event_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+    __table_args__ = (
+        Index('ix_events_data_gin', 'data', postgresql_using='gin'),
     )
