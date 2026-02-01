@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from src.api.exceptions import TradingSystemError, trading_error_handler
 from src.api.middleware import RequestLoggingMiddleware
-from src.api.routers import events, health, portfolio, trades
+from src.api.routers import events, health, market_data, portfolio, trades
 from src.utils.logging import get_logger, setup_logging
 
 # Setup logging first
@@ -19,6 +19,7 @@ tags_metadata = [
     {"name": "Events", "description": "Append-only event log for audit trail"},
     {"name": "Portfolio", "description": "Portfolio state and positions"},
     {"name": "Trades", "description": "Trade history and execution"},
+    {"name": "Market Data", "description": "Real-time market data and indicators"},
 ]
 
 
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(events.router)
     app.include_router(portfolio.router)
     app.include_router(trades.router)
+    app.include_router(market_data.router)
 
     return app
 

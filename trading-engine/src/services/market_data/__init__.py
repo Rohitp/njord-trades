@@ -1,6 +1,13 @@
 """Market data service with provider adapters."""
 
-from src.services.market_data.provider import MarketDataProvider, Quote, OHLCV
-from src.services.market_data.service import MarketDataService
+from src.services.market_data.provider import MarketDataProvider, Quote, OHLCV, TechnicalIndicators
+from src.services.market_data.service import MarketDataService, market_data_service
 
-__all__ = ["MarketDataProvider", "MarketDataService", "Quote", "OHLCV"]
+__all__ = [
+    "MarketDataProvider",
+    "MarketDataService",
+    "market_data_service",
+    "Quote",
+    "OHLCV",
+    "TechnicalIndicators",
+]

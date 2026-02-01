@@ -42,7 +42,15 @@ class YFinanceProvider(MarketDataProvider):
     async def get_quotes(self, symbols: list[str]) -> list[Quote]:
         """Get current quotes for multiple symbols."""
         tasks = [self.get_quote(symbol) for symbol in symbols]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        quotes = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                log.warning("quote_fetch_failed", symbol=symbols[i], error=str(result))
+            else:
+                quotes.append(result)
+        return quotes
 
     async def get_bars(self, symbol: str, days: int = 200) -> list[OHLCV]:
         """Get historical OHLCV bars."""
