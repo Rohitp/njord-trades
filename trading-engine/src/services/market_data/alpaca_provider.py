@@ -1,0 +1,154 @@
+"""Alpaca market data provider adapter."""
+
+from datetime import datetime, timedelta
+
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
+from alpaca.data.timeframe import TimeFrame
+
+from src.config import settings
+from src.services.market_data.provider import (
+    MarketDataProvider,
+    OHLCV,
+    Quote,
+    TechnicalIndicators,
+)
+from src.utils.logging import get_logger
+
+log = get_logger(__name__)
+
+
+class AlpacaProvider(MarketDataProvider):
+    """Market data provider using Alpaca API."""
+
+    def __init__(self):
+        self._client = None
+
+    @property
+    def client(self) -> StockHistoricalDataClient:
+        """Lazy initialization of Alpaca client."""
+        if self._client is None:
+            self._client = StockHistoricalDataClient(
+                api_key=settings.alpaca.api_key,
+                secret_key=settings.alpaca.secret_key,
+            )
+        return self._client
+
+    @property
+    def name(self) -> str:
+        return "alpaca"
+
+    async def get_quote(self, symbol: str) -> Quote:
+        """Get current quote for a symbol."""
+        request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+        response = self.client.get_stock_latest_quote(request)
+        quote_data = response[symbol]
+
+        return Quote(
+            symbol=symbol,
+            price=(quote_data.bid_price + quote_data.ask_price) / 2,
+            bid=quote_data.bid_price,
+            ask=quote_data.ask_price,
+            volume=None,  # Latest quote doesn't include volume
+            timestamp=quote_data.timestamp,
+        )
+
+    async def get_quotes(self, symbols: list[str]) -> list[Quote]:
+        """Get current quotes for multiple symbols."""
+        request = StockLatestQuoteRequest(symbol_or_symbols=symbols)
+        response = self.client.get_stock_latest_quote(request)
+
+        quotes = []
+        for symbol in symbols:
+            if symbol in response:
+                quote_data = response[symbol]
+                quotes.append(Quote(
+                    symbol=symbol,
+                    price=(quote_data.bid_price + quote_data.ask_price) / 2,
+                    bid=quote_data.bid_price,
+                    ask=quote_data.ask_price,
+                    volume=None,
+                    timestamp=quote_data.timestamp,
+                ))
+        return quotes
+
+    async def get_bars(self, symbol: str, days: int = 200) -> list[OHLCV]:
+        """Get historical OHLCV bars."""
+        # Add buffer for indicator calculation
+        start_date = datetime.now() - timedelta(days=days + 50)
+
+        request = StockBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=TimeFrame.Day,
+            start=start_date,
+        )
+        response = self.client.get_stock_bars(request)
+
+        bars = []
+        for bar in response[symbol]:
+            bars.append(OHLCV(
+                symbol=symbol,
+                timestamp=bar.timestamp,
+                open=bar.open,
+                high=bar.high,
+                low=bar.low,
+                close=bar.close,
+                volume=bar.volume,
+            ))
+        return bars
+
+    async def get_technical_indicators(self, symbol: str) -> TechnicalIndicators:
+        """Calculate technical indicators from historical data."""
+        bars = await self.get_bars(symbol, days=200)
+
+        if not bars:
+            raise ValueError(f"No data available for {symbol}")
+
+        closes = [bar.close for bar in bars]
+        volumes = [bar.volume for bar in bars]
+        current_price = closes[-1]
+        current_volume = volumes[-1]
+
+        # Calculate SMAs
+        sma_20 = sum(closes[-20:]) / 20 if len(closes) >= 20 else None
+        sma_50 = sum(closes[-50:]) / 50 if len(closes) >= 50 else None
+        sma_200 = sum(closes[-200:]) / 200 if len(closes) >= 200 else None
+
+        # Calculate RSI (14-period)
+        rsi_14 = self._calculate_rsi(closes, 14) if len(closes) >= 15 else None
+
+        # Volume analysis
+        volume_avg_20 = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else None
+        volume_ratio = current_volume / volume_avg_20 if volume_avg_20 else None
+
+        return TechnicalIndicators(
+            symbol=symbol,
+            price=current_price,
+            sma_20=sma_20,
+            sma_50=sma_50,
+            sma_200=sma_200,
+            rsi_14=rsi_14,
+            volume_avg_20=volume_avg_20,
+            volume_ratio=volume_ratio,
+        )
+
+    def _calculate_rsi(self, prices: list[float], period: int = 14) -> float:
+        """Calculate RSI indicator."""
+        if len(prices) < period + 1:
+            return None
+
+        deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
+        recent_deltas = deltas[-(period):]
+
+        gains = [d if d > 0 else 0 for d in recent_deltas]
+        losses = [-d if d < 0 else 0 for d in recent_deltas]
+
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+
+        if avg_loss == 0:
+            return 100.0
+
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        return round(rsi, 2)
