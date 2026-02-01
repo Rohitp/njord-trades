@@ -2,7 +2,7 @@
 
 # Run FastAPI dev server with reload
 dev:
-	uv run uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000 --log-level warning
+	uv run uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000 --log-level warning
 
 # Database commands (run from project root)
 db-up:

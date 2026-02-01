@@ -1,8 +1,5 @@
-from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-load_dotenv()
 
 
 class DatabaseSettings(BaseSettings):
@@ -140,7 +137,7 @@ class AlertSettings(BaseSettings):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict()
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     environment: str = Field(default="development", description="development|staging|production")
     debug: bool = False

@@ -57,9 +57,9 @@ class SystemState(Base):
     trading_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     circuit_breaker_active: Mapped[bool] = mapped_column(Boolean, default=False)
     circuit_breaker_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, 
+        DateTime(timezone=True), 
         server_default=func.now(), 
         onupdate=func.now()
     )
@@ -153,7 +153,7 @@ class Trade(Base):
     __tablename__ = "trades"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    symbol: Mapped[str] = mapped_column(String(20), index=True)
+    symbol: Mapped[str] = mapped_column(String(20), index=True)  # Indexed per requirements
     action: Mapped[str] = mapped_column(String(10))  # BUY/SELL
     quantity: Mapped[int] = mapped_column(Integer)
     price: Mapped[float] = mapped_column(Numeric(12, 4))
@@ -165,7 +165,7 @@ class Trade(Base):
     risk_score: Mapped[float] = mapped_column(Numeric(5, 4), default=0)
 
     # Outcome tracking
-    outcome: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    outcome: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)  # Indexed per requirements
     pnl: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     pnl_pct: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)
 
