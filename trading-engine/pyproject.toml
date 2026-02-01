@@ -2,7 +2,6 @@
 name = "trading-engine"
 version = "0.1.0"
 description = "Multi-agent LLM-powered trading system"
-readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
@@ -44,3 +43,6 @@ select = ["E", "F", "I", "N", "W"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
