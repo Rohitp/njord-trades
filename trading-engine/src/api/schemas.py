@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.database.models import EventType, TradeAction, TradeStatus
+from src.database.models import CapitalEventType, EventType, StrategyStatus, TradeAction, TradeStatus
 
 
 class EventCreate(BaseModel):
@@ -129,4 +129,102 @@ class TradeListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# =============================================================================
+# CAPITAL EVENTS
+# =============================================================================
+
+
+class CapitalEventCreate(BaseModel):
+    """Schema for creating a capital event."""
+    event_type: str = Field(..., description="Type of capital event")
+    amount: float = Field(..., description="Amount (positive for inflow, negative for outflow)")
+    balance_after: float = Field(..., description="Portfolio balance after this event")
+    description: str | None = Field(None, description="Optional description")
+    trade_id: UUID | None = Field(None, description="Associated trade ID if applicable")
+
+    @field_validator("event_type")
+    @classmethod
+    def validate_event_type(cls, v: str) -> str:
+        allowed = [e.value for e in CapitalEventType]
+        if v.upper() not in allowed:
+            raise ValueError(f"event_type must be one of: {', '.join(allowed)}")
+        return v.upper()
+
+
+class CapitalEventResponse(BaseModel):
+    """Schema for capital event response."""
+    id: UUID
+    event_type: str
+    amount: float
+    balance_after: float
+    description: str | None
+    trade_id: UUID | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CapitalEventListResponse(BaseModel):
+    """Schema for paginated capital events list."""
+    events: list[CapitalEventResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+# =============================================================================
+# STRATEGIES
+# =============================================================================
+
+
+class StrategyCreate(BaseModel):
+    """Schema for creating a strategy."""
+    name: str = Field(..., min_length=1, max_length=50, description="Strategy name")
+    description: str | None = Field(None, description="Strategy description")
+    allocation: float = Field(1.0, ge=0, le=1, description="Allocation (0.0-1.0)")
+    capital: float = Field(0, ge=0, description="Initial capital")
+
+
+class StrategyUpdate(BaseModel):
+    """Schema for updating a strategy."""
+    status: str | None = Field(None, description="Strategy status")
+    description: str | None = Field(None, description="Strategy description")
+    allocation: float | None = Field(None, ge=0, le=1, description="Allocation (0.0-1.0)")
+    capital: float | None = Field(None, ge=0, description="Capital allocated")
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        allowed = [e.value for e in StrategyStatus]
+        if v.upper() not in allowed:
+            raise ValueError(f"status must be one of: {', '.join(allowed)}")
+        return v.upper()
+
+
+class StrategyResponse(BaseModel):
+    """Schema for strategy response."""
+    id: UUID
+    name: str
+    status: str
+    description: str | None
+    allocation: float
+    capital: float
+    sharpe_30d: float | None
+    win_rate_30d: float | None
+    total_trades: int
+    total_pnl: float
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StrategyListResponse(BaseModel):
+    """Schema for strategies list."""
+    strategies: list[StrategyResponse]
+    total: int
 

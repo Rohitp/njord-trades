@@ -1,5 +1,7 @@
 """Market data service with provider fallback logic."""
 
+from collections.abc import Awaitable, Callable
+
 from src.config import settings
 from src.services.market_data.alpaca_provider import AlpacaProvider
 from src.services.market_data.provider import (
@@ -76,17 +78,36 @@ class MarketDataService:
         )
 
     async def get_indicators_batch(self, symbols: list[str]) -> dict[str, TechnicalIndicators]:
-        """Get technical indicators for multiple symbols."""
-        results = {}
-        for symbol in symbols:
+        """Get technical indicators for multiple symbols (parallelized)."""
+        import asyncio
+        
+        async def fetch_indicator(symbol: str) -> tuple[str, TechnicalIndicators | None]:
             try:
-                results[symbol] = await self.get_technical_indicators(symbol)
+                indicators = await self.get_technical_indicators(symbol)
+                return (symbol, indicators)
             except Exception as e:
                 log.error("indicator_fetch_failed", symbol=symbol, error=str(e))
+                return (symbol, None)
+        
+        tasks = [fetch_indicator(symbol) for symbol in symbols]
+        results_list = await asyncio.gather(*tasks)
+        
+        # Filter out None results
+        results = {symbol: indicators for symbol, indicators in results_list if indicators is not None}
         return results
 
-    async def _with_fallback(self, operation, operation_name: str):
-        """Execute operation with fallback on failure."""
+    async def _with_fallback(
+        self,
+        operation: Callable[[MarketDataProvider], Awaitable],
+        operation_name: str,
+    ):
+        """
+        Execute operation with fallback on failure.
+        
+        Args:
+            operation: Async function that takes a MarketDataProvider and returns a result
+            operation_name: Name of operation for logging
+        """
         try:
             result = await operation(self.primary)
             log.debug("market_data_success", provider=self.primary.name, operation=operation_name)

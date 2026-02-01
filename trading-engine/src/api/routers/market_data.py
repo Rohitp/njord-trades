@@ -1,5 +1,7 @@
 """Market data endpoints."""
 
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -17,6 +19,7 @@ class QuoteResponse(BaseModel):
     bid: float | None
     ask: float | None
     volume: int | None
+    timestamp: datetime | None = None
 
 
 class TechnicalIndicatorsResponse(BaseModel):
@@ -42,6 +45,7 @@ async def get_quote(symbol: str) -> QuoteResponse:
             bid=quote.bid,
             ask=quote.ask,
             volume=quote.volume,
+            timestamp=quote.timestamp,
         )
     except Exception as e:
         log.error("quote_fetch_failed", symbol=symbol, error=str(e))

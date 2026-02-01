@@ -44,6 +44,23 @@ class TradeOutcome(str, Enum):
     OPEN = "OPEN"
 
 
+class CapitalEventType(str, Enum):
+    """Types of capital events."""
+    DEPOSIT = "DEPOSIT"           # Money added to account
+    WITHDRAWAL = "WITHDRAWAL"     # Money removed from account
+    REALIZED_PROFIT = "REALIZED_PROFIT"   # Profit from closed trade
+    REALIZED_LOSS = "REALIZED_LOSS"       # Loss from closed trade
+    DIVIDEND = "DIVIDEND"         # Dividend received
+    FEE = "FEE"                   # Trading fees, commissions
+
+
+class StrategyStatus(str, Enum):
+    """Strategy status."""
+    ACTIVE = "ACTIVE"             # Currently trading
+    PAUSED = "PAUSED"             # Temporarily stopped
+    DISABLED = "DISABLED"         # Permanently disabled
+
+
 class SystemState(Base):
     """
     System-wide trading state. Single row table.
@@ -175,6 +192,77 @@ class Trade(Base):
     slippage: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+
+class CapitalEvent(Base):
+    """
+    Track all capital movements in the account.
+
+    WHAT IT IS:
+        A record of every deposit, withdrawal, profit, loss, dividend, or fee.
+        Critical for calculating true performance (alpha) vs just deposits.
+
+    WHY WE NEED IT:
+        - Without this, can't tell if portfolio growth is from trading or deposits
+        - Needed for accurate Sharpe ratio, drawdown calculations
+        - Audit trail for all money in/out
+
+    EXAMPLE:
+        User deposits £500 -> CapitalEvent(type=DEPOSIT, amount=500)
+        Trade closes +£50  -> CapitalEvent(type=REALIZED_PROFIT, amount=50)
+    """
+    __tablename__ = "capital_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_type: Mapped[str] = mapped_column(String(30), index=True)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    balance_after: Mapped[float] = mapped_column(Numeric(12, 2))  # Portfolio value after event
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trade_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)  # Link to trade if applicable
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class Strategy(Base):
+    """
+    Track multiple trading strategies.
+
+    WHAT IT IS:
+        Configuration and performance tracking for different strategies.
+        Allows running momentum, mean reversion, etc. with separate allocations.
+
+    WHY WE NEED IT:
+        - Different strategies have different risk profiles
+        - Track which strategies are working
+        - Allocate capital per strategy
+        - Disable underperforming strategies independently
+
+    EXAMPLE:
+        Strategy(name="momentum", allocation=0.6, capital=300, sharpe_30d=1.2)
+        Strategy(name="mean_reversion", allocation=0.4, capital=200, sharpe_30d=0.8)
+    """
+    __tablename__ = "strategies"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default=StrategyStatus.ACTIVE.value)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Allocation
+    allocation: Mapped[float] = mapped_column(Numeric(5, 4), default=1.0)  # % of portfolio (0.0-1.0)
+    capital: Mapped[float] = mapped_column(Numeric(12, 2), default=0)      # Current capital allocated
+
+    # Performance metrics (updated periodically)
+    sharpe_30d: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)
+    win_rate_30d: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)  # 0.0-1.0
+    total_trades: Mapped[int] = mapped_column(Integer, default=0)
+    total_pnl: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
