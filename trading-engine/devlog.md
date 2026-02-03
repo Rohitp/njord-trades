@@ -487,6 +487,8 @@ Current: **45 tests passing**
 
 7. **Trace ID from HTTP header**: Supports distributed tracing across services via `X-Request-ID`.
 
+8. **Serialization in dataclasses**: Each state dataclass has a `from_dict()` classmethod for deserializing LangGraph's dict output. This keeps serialization logic co-located with schema definitions, making `_dict_to_state()` a one-liner and centralizing future schema changes.
+
 ---
 
 *Last updated: 2026-02-03*

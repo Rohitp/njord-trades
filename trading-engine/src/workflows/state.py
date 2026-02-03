@@ -5,13 +5,41 @@ Defines the data structures that flow through the trading pipeline:
     Market Data → Signal → Risk Assessment → Validation → Decision → Execution
 
 Each agent receives input and produces output in a standardized format.
+
+All dataclasses include from_dict() classmethods for deserialization from
+LangGraph's dict output, keeping serialization logic co-located with schema.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Self
 from uuid import UUID, uuid4
+
+
+# =============================================================================
+# HELPERS
+# =============================================================================
+
+
+def _parse_uuid(value: str | UUID | None) -> UUID | None:
+    """Convert string to UUID if needed."""
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    return UUID(value)
+
+
+def _parse_datetime(value: str | datetime | None) -> datetime:
+    """Convert ISO string to datetime if needed."""
+    if value is None:
+        return datetime.now()
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(value)
 
 
 # =============================================================================
@@ -65,6 +93,25 @@ class Signal:
         if isinstance(self.action, str):
             self.action = SignalAction(self.action)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Deserialize from dict (e.g., LangGraph output)."""
+        return cls(
+            id=_parse_uuid(data.get("id")) or uuid4(),
+            symbol=data.get("symbol", ""),
+            action=SignalAction(data["action"]) if isinstance(data.get("action"), str) else data.get("action", SignalAction.HOLD),
+            confidence=data.get("confidence", 0.0),
+            proposed_quantity=data.get("proposed_quantity", 0),
+            reasoning=data.get("reasoning", ""),
+            price=data.get("price", 0.0),
+            sma_20=data.get("sma_20"),
+            sma_50=data.get("sma_50"),
+            sma_200=data.get("sma_200"),
+            rsi_14=data.get("rsi_14"),
+            volume_ratio=data.get("volume_ratio"),
+            timestamp=_parse_datetime(data.get("timestamp")),
+        )
+
 
 @dataclass
 class RiskAssessment:
@@ -88,6 +135,21 @@ class RiskAssessment:
 
     timestamp: datetime = field(default_factory=datetime.now)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Deserialize from dict (e.g., LangGraph output)."""
+        return cls(
+            signal_id=_parse_uuid(data.get("signal_id")) or uuid4(),
+            approved=data.get("approved", False),
+            adjusted_quantity=data.get("adjusted_quantity", 0),
+            risk_score=data.get("risk_score", 0.0),
+            hard_constraint_violated=data.get("hard_constraint_violated", False),
+            hard_constraint_reason=data.get("hard_constraint_reason"),
+            concerns=data.get("concerns", []),
+            reasoning=data.get("reasoning", ""),
+            timestamp=_parse_datetime(data.get("timestamp")),
+        )
+
 
 @dataclass
 class Validation:
@@ -109,6 +171,21 @@ class Validation:
 
     timestamp: datetime = field(default_factory=datetime.now)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Deserialize from dict (e.g., LangGraph output)."""
+        return cls(
+            signal_id=_parse_uuid(data.get("signal_id")) or uuid4(),
+            approved=data.get("approved", False),
+            concerns=data.get("concerns", []),
+            suggestions=data.get("suggestions", []),
+            reasoning=data.get("reasoning", ""),
+            repetition_detected=data.get("repetition_detected", False),
+            sector_clustering_detected=data.get("sector_clustering_detected", False),
+            similar_setup_failures=data.get("similar_setup_failures", 0),
+            timestamp=_parse_datetime(data.get("timestamp")),
+        )
+
 
 @dataclass
 class FinalDecision:
@@ -128,6 +205,21 @@ class FinalDecision:
     def __post_init__(self):
         if isinstance(self.decision, str):
             self.decision = Decision(self.decision)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Deserialize from dict (e.g., LangGraph output)."""
+        decision = data.get("decision", Decision.DO_NOT_EXECUTE)
+        if isinstance(decision, str):
+            decision = Decision(decision)
+        return cls(
+            signal_id=_parse_uuid(data.get("signal_id")) or uuid4(),
+            decision=decision,
+            final_quantity=data.get("final_quantity", 0),
+            confidence=data.get("confidence", 0.0),
+            reasoning=data.get("reasoning", ""),
+            timestamp=_parse_datetime(data.get("timestamp")),
+        )
 
 
 @dataclass
@@ -155,6 +247,24 @@ class ExecutionResult:
 
     timestamp: datetime = field(default_factory=datetime.now)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Deserialize from dict (e.g., LangGraph output)."""
+        return cls(
+            signal_id=_parse_uuid(data.get("signal_id")) or uuid4(),
+            success=data.get("success", False),
+            trade_id=_parse_uuid(data.get("trade_id")),
+            symbol=data.get("symbol", ""),
+            action=data.get("action", ""),
+            quantity=data.get("quantity", 0),
+            requested_price=data.get("requested_price", 0.0),
+            fill_price=data.get("fill_price"),
+            slippage=data.get("slippage"),
+            broker_order_id=data.get("broker_order_id"),
+            error=data.get("error"),
+            timestamp=_parse_datetime(data.get("timestamp")),
+        )
+
 
 # =============================================================================
 # WORKFLOW STATE
@@ -178,6 +288,18 @@ class PortfolioSnapshot:
 
     # Sector exposure: sector -> total value
     sector_exposure: dict[str, float] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Deserialize from dict (e.g., LangGraph output)."""
+        return cls(
+            cash=data.get("cash", 0.0),
+            total_value=data.get("total_value", 0.0),
+            deployed_capital=data.get("deployed_capital", 0.0),
+            peak_value=data.get("peak_value", 0.0),
+            positions=data.get("positions", {}),
+            sector_exposure=data.get("sector_exposure", {}),
+        )
 
 
 @dataclass
@@ -248,3 +370,76 @@ class TradingState:
             "details": details or {},
             "timestamp": datetime.now().isoformat(),
         })
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """
+        Deserialize from dict (e.g., LangGraph output).
+
+        LangGraph serializes dataclasses to dicts, so this method reconstructs
+        the full TradingState with all nested objects properly typed.
+
+        Args:
+            data: Dictionary from LangGraph output
+
+        Returns:
+            Fully reconstructed TradingState
+
+        Raises:
+            ValueError: If required fields are missing
+        """
+        # Validate required fields
+        required_fields = ["cycle_id", "cycle_type", "symbols"]
+        missing = [f for f in required_fields if f not in data]
+        if missing:
+            raise ValueError(f"Missing required fields: {missing}")
+
+        # Reconstruct nested objects using their from_dict methods
+        signals = [
+            Signal.from_dict(s) if isinstance(s, dict) else s
+            for s in data.get("signals", [])
+        ]
+
+        risk_assessments = [
+            RiskAssessment.from_dict(ra) if isinstance(ra, dict) else ra
+            for ra in data.get("risk_assessments", [])
+        ]
+
+        validations = [
+            Validation.from_dict(v) if isinstance(v, dict) else v
+            for v in data.get("validations", [])
+        ]
+
+        final_decisions = [
+            FinalDecision.from_dict(fd) if isinstance(fd, dict) else fd
+            for fd in data.get("final_decisions", [])
+        ]
+
+        execution_results = [
+            ExecutionResult.from_dict(er) if isinstance(er, dict) else er
+            for er in data.get("execution_results", [])
+        ]
+
+        portfolio_data = data.get("portfolio_snapshot", {})
+        if isinstance(portfolio_data, dict):
+            portfolio = PortfolioSnapshot.from_dict(portfolio_data)
+        elif isinstance(portfolio_data, PortfolioSnapshot):
+            portfolio = portfolio_data
+        else:
+            portfolio = PortfolioSnapshot()
+
+        return cls(
+            cycle_id=_parse_uuid(data.get("cycle_id")) or uuid4(),
+            cycle_type=data.get("cycle_type", "scheduled"),
+            trigger_symbol=data.get("trigger_symbol"),
+            started_at=_parse_datetime(data.get("started_at")),
+            trace_id=data.get("trace_id"),
+            symbols=data.get("symbols", []),
+            portfolio_snapshot=portfolio,
+            signals=signals,
+            risk_assessments=risk_assessments,
+            validations=validations,
+            final_decisions=final_decisions,
+            execution_results=execution_results,
+            errors=data.get("errors", []),
+        )

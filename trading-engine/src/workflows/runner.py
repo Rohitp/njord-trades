@@ -18,7 +18,6 @@ Usage:
 
 from datetime import datetime
 from typing import Any
-from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,17 +27,7 @@ from src.database.models import Position, PortfolioState, SystemState
 from src.services.persistence import CyclePersistenceService
 from src.utils.logging import get_logger
 from src.workflows.graph import trading_graph
-from src.workflows.state import (
-    Decision,
-    ExecutionResult,
-    FinalDecision,
-    PortfolioSnapshot,
-    RiskAssessment,
-    Signal,
-    SignalAction,
-    TradingState,
-    Validation,
-)
+from src.workflows.state import PortfolioSnapshot, TradingState
 
 log = get_logger(__name__)
 
@@ -240,8 +229,9 @@ class TradingCycleRunner:
         """
         Convert LangGraph output dict back to TradingState.
 
-        LangGraph serializes dataclasses to dicts, so we need to
-        reconstruct the TradingState and its nested objects.
+        Delegates to TradingState.from_dict() which handles all nested
+        object reconstruction. Serialization logic is co-located with
+        the schema definitions in state.py.
 
         Args:
             data: Dictionary from LangGraph output
@@ -255,94 +245,8 @@ class TradingCycleRunner:
         if not isinstance(data, dict):
             raise ValueError(f"Expected dict from LangGraph, got {type(data).__name__}")
 
-        # Validate required fields
-        required_fields = ["cycle_id", "cycle_type", "symbols"]
-        missing = [f for f in required_fields if f not in data]
-        if missing:
-            raise ValueError(f"Missing required fields in LangGraph output: {missing}")
-
         try:
-            # Reconstruct nested objects from dicts
-            signals = []
-            for s in data.get("signals", []):
-                if isinstance(s, dict):
-                    # Handle UUID conversion
-                    if "id" in s and isinstance(s["id"], str):
-                        s["id"] = UUID(s["id"])
-                    if "action" in s and isinstance(s["action"], str):
-                        s["action"] = SignalAction(s["action"])
-                    signals.append(Signal(**s))
-                else:
-                    signals.append(s)
-
-            risk_assessments = []
-            for ra in data.get("risk_assessments", []):
-                if isinstance(ra, dict):
-                    if "signal_id" in ra and isinstance(ra["signal_id"], str):
-                        ra["signal_id"] = UUID(ra["signal_id"])
-                    risk_assessments.append(RiskAssessment(**ra))
-                else:
-                    risk_assessments.append(ra)
-
-            validations = []
-            for v in data.get("validations", []):
-                if isinstance(v, dict):
-                    if "signal_id" in v and isinstance(v["signal_id"], str):
-                        v["signal_id"] = UUID(v["signal_id"])
-                    validations.append(Validation(**v))
-                else:
-                    validations.append(v)
-
-            final_decisions = []
-            for fd in data.get("final_decisions", []):
-                if isinstance(fd, dict):
-                    if "signal_id" in fd and isinstance(fd["signal_id"], str):
-                        fd["signal_id"] = UUID(fd["signal_id"])
-                    if "decision" in fd and isinstance(fd["decision"], str):
-                        fd["decision"] = Decision(fd["decision"])
-                    final_decisions.append(FinalDecision(**fd))
-                else:
-                    final_decisions.append(fd)
-
-            execution_results = []
-            for er in data.get("execution_results", []):
-                if isinstance(er, dict):
-                    if "signal_id" in er and isinstance(er["signal_id"], str):
-                        er["signal_id"] = UUID(er["signal_id"]) if er["signal_id"] else None
-                    if "trade_id" in er and isinstance(er["trade_id"], str):
-                        er["trade_id"] = UUID(er["trade_id"]) if er["trade_id"] else None
-                    execution_results.append(ExecutionResult(**er))
-                else:
-                    execution_results.append(er)
-
-            portfolio = data.get("portfolio_snapshot", {})
-            if isinstance(portfolio, dict):
-                portfolio = PortfolioSnapshot(**portfolio)
-            elif not isinstance(portfolio, PortfolioSnapshot):
-                # Fallback to default if invalid
-                portfolio = PortfolioSnapshot()
-
-            # Handle cycle_id UUID conversion
-            cycle_id = data.get("cycle_id")
-            if isinstance(cycle_id, str):
-                cycle_id = UUID(cycle_id)
-
-            return TradingState(
-                cycle_id=cycle_id,
-                cycle_type=data.get("cycle_type", "scheduled"),
-                trigger_symbol=data.get("trigger_symbol"),
-                started_at=data.get("started_at"),
-                trace_id=data.get("trace_id"),
-                symbols=data.get("symbols", []),
-                portfolio_snapshot=portfolio,
-                signals=signals,
-                risk_assessments=risk_assessments,
-                validations=validations,
-                final_decisions=final_decisions,
-                execution_results=execution_results,
-                errors=data.get("errors", []),
-            )
-
+            return TradingState.from_dict(data)
         except (ValueError, TypeError, KeyError) as e:
             log.error("state_reconstruction_failed", error=str(e), data_keys=list(data.keys()))
             raise ValueError(f"Failed to reconstruct TradingState: {e}") from e
