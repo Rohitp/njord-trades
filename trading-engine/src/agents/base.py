@@ -67,7 +67,7 @@ class BaseAgent(ABC):
                 timeout=60.0,
                 temperature=0.0,
             )
-        else:
+        elif provider == "anthropic":
             return ChatAnthropic(
                 model=self.model_name,
                 api_key=settings.llm.anthropic_api_key,
@@ -75,6 +75,8 @@ class BaseAgent(ABC):
                 timeout=60.0,
                 temperature=0.0,
             )
+        else:
+            raise ValueError(f"Unsupported LLM provider: {provider}")
 
     def _infer_provider(self, model_name: str) -> str:
         """
@@ -88,11 +90,11 @@ class BaseAgent(ABC):
         """
         model_lower = model_name.lower()
 
-        # OpenAI models
+        # Check for explicit OpenAI models
         if model_lower.startswith(("gpt-", "o1-", "o3-")):
             return "openai"
 
-        # Anthropic models
+        # Check for explicit Anthropic models
         if model_lower.startswith("claude"):
             return "anthropic"
 
@@ -142,12 +144,20 @@ class BaseAgent(ABC):
         Provides the LLM with current portfolio state including cash,
         positions, and sector exposure.
         """
+        if not state.portfolio_snapshot:
+            return "Portfolio snapshot not available"
+
         snapshot = state.portfolio_snapshot
 
+        # Format numbers with commas and 2 decimal places
+        cash_str = f"${snapshot.cash:,.2f}" if snapshot.cash is not None else "N/A"
+        total_value_str = f"${snapshot.total_value:,.2f}" if snapshot.total_value is not None else "N/A"
+        deployed_capital_str = f"${snapshot.deployed_capital:,.2f}" if snapshot.deployed_capital is not None else "N/A"
+
         lines = [
-            f"Cash Available: ${snapshot.cash:,.2f}",
-            f"Total Portfolio Value: ${snapshot.total_value:,.2f}",
-            f"Deployed Capital: ${snapshot.deployed_capital:,.2f}",
+            f"Cash Available: {cash_str}",
+            f"Total Portfolio Value: {total_value_str}",
+            f"Deployed Capital: {deployed_capital_str}",
         ]
 
         if snapshot.positions:
@@ -156,12 +166,14 @@ class BaseAgent(ABC):
                 qty = details.get("quantity", 0)
                 value = details.get("value", 0)
                 sector = details.get("sector", "Unknown")
-                lines.append(f"  {symbol}: {qty} shares, ${value:,.2f} ({sector})")
+                value_str = f"${value:,.2f}" if value is not None else "N/A"
+                lines.append(f"  {symbol}: {qty} shares, {value_str} ({sector})")
 
         if snapshot.sector_exposure:
             lines.append("\nSector Exposure:")
             for sector, exposure in snapshot.sector_exposure.items():
-                pct = (exposure / snapshot.total_value * 100) if snapshot.total_value > 0 else 0
-                lines.append(f"  {sector}: ${exposure:,.2f} ({pct:.1f}%)")
+                exposure_str = f"${exposure:,.2f}" if exposure is not None else "N/A"
+                pct = (exposure / snapshot.total_value * 100) if snapshot.total_value and snapshot.total_value > 0 else 0
+                lines.append(f"  {sector}: {exposure_str} ({pct:.1f}%)")
 
         return "\n".join(lines)
