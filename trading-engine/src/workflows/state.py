@@ -202,6 +202,9 @@ class TradingState:
     trigger_symbol: str | None = None  # For event-driven cycles
     started_at: datetime = field(default_factory=datetime.now)
 
+    # Tracing - trace_id flows from HTTP request for distributed tracing
+    trace_id: str | None = None
+
     # Inputs
     symbols: list[str] = field(default_factory=list)  # Symbols to analyze
     portfolio_snapshot: PortfolioSnapshot = field(default_factory=PortfolioSnapshot)

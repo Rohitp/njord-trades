@@ -15,6 +15,7 @@ Usage:
     result = await trading_graph.ainvoke(state)
 """
 
+import structlog
 from langgraph.graph import StateGraph, START, END
 
 from src.agents import DataAgent, RiskManager, Validator, MetaAgent
@@ -28,6 +29,14 @@ from src.utils.metrics import (
 from src.workflows.state import TradingState
 
 log = get_logger(__name__)
+
+
+def _bind_cycle_context(state: TradingState) -> None:
+    """Bind cycle_id and trace_id to structlog context for all downstream logs."""
+    structlog.contextvars.bind_contextvars(
+        cycle_id=str(state.cycle_id),
+        trace_id=state.trace_id,
+    )
 
 
 # =============================================================================
@@ -57,7 +66,8 @@ async def data_agent_node(state: TradingState) -> TradingState:
     Input: TradingState with symbols to analyze
     Output: TradingState with signals[] populated
     """
-    log.debug("data_agent_node_start", symbols=state.symbols, cycle_id=str(state.cycle_id))
+    _bind_cycle_context(state)
+    log.debug("data_agent_node_start", symbols=state.symbols)
 
     async with record_agent_execution("DataAgent"):
         result = await _data_agent.run(state)
@@ -77,6 +87,7 @@ async def risk_manager_node(state: TradingState) -> TradingState:
     Input: TradingState with signals from Data Agent
     Output: TradingState with risk_assessments[] populated
     """
+    _bind_cycle_context(state)
     log.debug("risk_manager_node_start", signals_count=len(state.signals))
 
     async with record_agent_execution("RiskManager"):
@@ -107,6 +118,7 @@ async def validator_node(state: TradingState) -> TradingState:
     Input: TradingState with signals and risk assessments
     Output: TradingState with validations[] populated
     """
+    _bind_cycle_context(state)
     log.debug("validator_node_start", signals_count=len(state.signals))
 
     async with record_agent_execution("Validator"):
@@ -124,6 +136,7 @@ async def meta_agent_node(state: TradingState) -> TradingState:
     Input: TradingState with signals, assessments, and validations
     Output: TradingState with final_decisions[] populated
     """
+    _bind_cycle_context(state)
     log.debug("meta_agent_node_start", signals_count=len(state.signals))
 
     async with record_agent_execution("MetaAgent"):

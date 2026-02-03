@@ -1,4 +1,4 @@
-"""FastAPI middleware for request logging and correlation IDs."""
+"""FastAPI middleware for request logging and trace IDs."""
 
 import time
 import uuid
@@ -10,15 +10,19 @@ from starlette.responses import Response
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Log all HTTP requests with timing and correlation IDs."""
+    """Log all HTTP requests with timing and trace IDs."""
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        # Generate correlation ID
-        correlation_id = str(uuid.uuid4())[:8]
+        # Use X-Request-ID header if provided, otherwise generate one
+        # This allows distributed tracing across services
+        trace_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
 
-        # Bind correlation ID to structlog context
+        # Store trace_id in request state for access by route handlers
+        request.state.trace_id = trace_id
+
+        # Bind trace_id to structlog context - all logs in this request will include it
         structlog.contextvars.clear_contextvars()
-        structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
+        structlog.contextvars.bind_contextvars(trace_id=trace_id)
 
         log = structlog.get_logger()
 
@@ -48,7 +52,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             duration_ms=round(duration_ms, 2),
         )
 
-        # Add correlation ID to response headers
-        response.headers["X-Correlation-ID"] = correlation_id
+        # Add trace ID to response headers for client correlation
+        response.headers["X-Request-ID"] = trace_id
 
         return response

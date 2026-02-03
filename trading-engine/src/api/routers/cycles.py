@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -102,6 +102,7 @@ class CycleResultResponse(BaseModel):
     """Complete result of a trading cycle."""
 
     cycle_id: str
+    trace_id: str | None = None  # For distributed tracing
     cycle_type: str
     started_at: datetime
     completed_at: datetime | None = None
@@ -134,6 +135,7 @@ router = APIRouter(prefix="/cycles", tags=["Trading Cycles"])
 @router.post("/run", response_model=CycleResultResponse)
 async def run_trading_cycle(
     request: RunCycleRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_session),
 ) -> CycleResultResponse:
     """
@@ -146,15 +148,21 @@ async def run_trading_cycle(
     4. MetaAgent synthesizes perspectives and makes final decisions
 
     Returns the complete cycle results including all agent outputs.
+
+    Pass X-Request-ID header for distributed tracing correlation.
     """
     start_time = datetime.now()
+
+    # Get trace_id from middleware (set from X-Request-ID header or generated)
+    trace_id = getattr(http_request.state, "trace_id", None)
+
     runner = TradingCycleRunner(db_session=db)
 
     try:
         if request.cycle_type == CycleType.EVENT and request.trigger_symbol:
-            result = await runner.run_event_cycle(request.trigger_symbol)
+            result = await runner.run_event_cycle(request.trigger_symbol, trace_id=trace_id)
         else:
-            result = await runner.run_scheduled_cycle(request.symbols)
+            result = await runner.run_scheduled_cycle(request.symbols, trace_id=trace_id)
     except ValueError as e:
         # Circuit breaker or validation errors
         log.warning("cycle_rejected", error=str(e))
@@ -169,6 +177,7 @@ async def run_trading_cycle(
     # Convert state to response
     return CycleResultResponse(
         cycle_id=str(result.cycle_id),
+        trace_id=result.trace_id,
         cycle_type=result.cycle_type,
         started_at=result.started_at,
         completed_at=completed_at,

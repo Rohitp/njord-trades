@@ -64,6 +64,7 @@ class TradingCycleRunner:
     async def run_scheduled_cycle(
         self,
         symbols: list[str] | None = None,
+        trace_id: str | None = None,
     ) -> TradingState:
         """
         Run a scheduled trading cycle for multiple symbols.
@@ -107,6 +108,7 @@ class TradingCycleRunner:
                 symbols=symbols,
                 portfolio_snapshot=portfolio,
                 started_at=start_time,
+                trace_id=trace_id,
             )
 
             # Run the workflow (returns dict due to LangGraph serialization)
@@ -140,6 +142,7 @@ class TradingCycleRunner:
     async def run_event_cycle(
         self,
         trigger_symbol: str,
+        trace_id: str | None = None,
     ) -> TradingState:
         """
         Run an event-triggered trading cycle for a single symbol.
@@ -174,6 +177,7 @@ class TradingCycleRunner:
                 symbols=[trigger_symbol],  # Focus on the triggering symbol
                 portfolio_snapshot=portfolio,
                 started_at=start_time,
+                trace_id=trace_id,
             )
 
             # Run the workflow (returns dict due to LangGraph serialization)
@@ -328,6 +332,7 @@ class TradingCycleRunner:
                 cycle_type=data.get("cycle_type", "scheduled"),
                 trigger_symbol=data.get("trigger_symbol"),
                 started_at=data.get("started_at"),
+                trace_id=data.get("trace_id"),
                 symbols=data.get("symbols", []),
                 portfolio_snapshot=portfolio,
                 signals=signals,
