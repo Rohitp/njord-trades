@@ -19,7 +19,10 @@ from langgraph.graph import StateGraph, START, END
 
 from src.agents import DataAgent, RiskManager, Validator, MetaAgent
 from src.services.market_data import MarketDataService
+from src.utils.logging import get_logger
 from src.workflows.state import TradingState
+
+log = get_logger(__name__)
 
 
 # =============================================================================
@@ -49,7 +52,10 @@ async def data_agent_node(state: TradingState) -> TradingState:
     Input: TradingState with symbols to analyze
     Output: TradingState with signals[] populated
     """
-    return await _data_agent.run(state)
+    log.debug("data_agent_node_start", symbols=state.symbols, cycle_id=str(state.cycle_id))
+    result = await _data_agent.run(state)
+    log.debug("data_agent_node_complete", signals_generated=len(result.signals))
+    return result
 
 
 async def risk_manager_node(state: TradingState) -> TradingState:
@@ -59,7 +65,11 @@ async def risk_manager_node(state: TradingState) -> TradingState:
     Input: TradingState with signals from Data Agent
     Output: TradingState with risk_assessments[] populated
     """
-    return await _risk_manager.run(state)
+    log.debug("risk_manager_node_start", signals_count=len(state.signals))
+    result = await _risk_manager.run(state)
+    approved = len([ra for ra in result.risk_assessments if ra.approved])
+    log.debug("risk_manager_node_complete", approved=approved, total=len(result.risk_assessments))
+    return result
 
 
 async def validator_node(state: TradingState) -> TradingState:
@@ -69,7 +79,11 @@ async def validator_node(state: TradingState) -> TradingState:
     Input: TradingState with signals and risk assessments
     Output: TradingState with validations[] populated
     """
-    return await _validator.run(state)
+    log.debug("validator_node_start", signals_count=len(state.signals))
+    result = await _validator.run(state)
+    approved = len([v for v in result.validations if v.approved])
+    log.debug("validator_node_complete", approved=approved, total=len(result.validations))
+    return result
 
 
 async def meta_agent_node(state: TradingState) -> TradingState:
@@ -79,7 +93,55 @@ async def meta_agent_node(state: TradingState) -> TradingState:
     Input: TradingState with signals, assessments, and validations
     Output: TradingState with final_decisions[] populated
     """
-    return await _meta_agent.run(state)
+    log.debug("meta_agent_node_start", signals_count=len(state.signals))
+    result = await _meta_agent.run(state)
+    execute_count = len(result.get_execute_decisions())
+    log.debug("meta_agent_node_complete", execute_decisions=execute_count, total=len(result.final_decisions))
+    return result
+
+
+# =============================================================================
+# CONDITIONAL EDGE FUNCTIONS
+# =============================================================================
+# These functions determine whether to continue to the next node or end early.
+
+
+def should_continue_to_risk_manager(state: TradingState) -> str:
+    """
+    Check if we should proceed to risk manager.
+
+    Only proceed if Data Agent generated signals.
+    """
+    if not state.signals:
+        log.debug("skipping_risk_manager", reason="no_signals")
+        return END
+    return "risk_manager"
+
+
+def should_continue_to_validator(state: TradingState) -> str:
+    """
+    Check if we should proceed to validator.
+
+    Only proceed if Risk Manager approved any signals.
+    """
+    approved_count = len([ra for ra in state.risk_assessments if ra.approved])
+    if approved_count == 0:
+        log.debug("skipping_validator", reason="no_approved_signals")
+        return END
+    return "validator"
+
+
+def should_continue_to_meta_agent(state: TradingState) -> str:
+    """
+    Check if we should proceed to meta agent.
+
+    Only proceed if Validator approved any signals.
+    """
+    approved_count = len([v for v in state.validations if v.approved])
+    if approved_count == 0:
+        log.debug("skipping_meta_agent", reason="no_validated_signals")
+        return END
+    return "meta_agent"
 
 
 # =============================================================================
@@ -89,17 +151,17 @@ async def meta_agent_node(state: TradingState) -> TradingState:
 
 def build_trading_graph() -> StateGraph:
     """
-    Build the trading workflow graph.
+    Build the trading workflow graph with conditional edges.
 
     Returns a compiled StateGraph that can be invoked with TradingState.
 
-    The graph has a simple linear structure:
-        START → data_agent → risk_manager → validator → meta_agent → END
+    The graph structure:
+        START → data_agent → [conditional] → risk_manager → [conditional] → 
+        validator → [conditional] → meta_agent → END
 
-    Each node is async and processes the state sequentially.
+    Conditional edges skip nodes if there's no data to process.
     """
     # Create a new StateGraph with TradingState as the state type
-    # LangGraph will pass this state through each node
     graph = StateGraph(TradingState)
 
     # Add nodes - each node is an async function that takes and returns state
@@ -108,11 +170,39 @@ def build_trading_graph() -> StateGraph:
     graph.add_node("validator", validator_node)
     graph.add_node("meta_agent", meta_agent_node)
 
-    # Define the flow (linear for now, could add branching later)
+    # Define the flow with conditional edges
     graph.add_edge(START, "data_agent")
-    graph.add_edge("data_agent", "risk_manager")
-    graph.add_edge("risk_manager", "validator")
-    graph.add_edge("validator", "meta_agent")
+    
+    # Conditional: Only go to risk_manager if signals were generated
+    graph.add_conditional_edges(
+        "data_agent",
+        should_continue_to_risk_manager,
+        {
+            "risk_manager": "risk_manager",
+            END: END,
+        },
+    )
+    
+    # Conditional: Only go to validator if signals were approved
+    graph.add_conditional_edges(
+        "risk_manager",
+        should_continue_to_validator,
+        {
+            "validator": "validator",
+            END: END,
+        },
+    )
+    
+    # Conditional: Only go to meta_agent if signals were validated
+    graph.add_conditional_edges(
+        "validator",
+        should_continue_to_meta_agent,
+        {
+            "meta_agent": "meta_agent",
+            END: END,
+        },
+    )
+    
     graph.add_edge("meta_agent", END)
 
     # Compile the graph into a runnable

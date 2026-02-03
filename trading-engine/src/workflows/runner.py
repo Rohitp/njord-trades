@@ -18,12 +18,14 @@ Usage:
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
-from src.database.models import Position, PortfolioState
+from src.database.models import Position, PortfolioState, SystemState
+from src.utils.logging import get_logger
 from src.workflows.graph import trading_graph
 from src.workflows.state import (
     Decision,
@@ -36,6 +38,8 @@ from src.workflows.state import (
     TradingState,
     Validation,
 )
+
+log = get_logger(__name__)
 
 
 class TradingCycleRunner:
@@ -71,27 +75,62 @@ class TradingCycleRunner:
 
         Returns:
             TradingState with all agent outputs populated
+
+        Raises:
+            ValueError: If circuit breaker is active or trading is disabled
         """
+        # Check circuit breaker before starting
+        if await self._is_circuit_breaker_active():
+            raise ValueError("Trading halted by circuit breaker")
+
         # Use watchlist from config if no symbols provided
         if symbols is None:
             symbols = settings.trading.watchlist_symbols
 
-        # Load current portfolio state
-        portfolio = await self._load_portfolio_snapshot()
-
-        # Create initial state
-        state = TradingState(
+        log.info(
+            "cycle_started",
             cycle_type="scheduled",
             symbols=symbols,
-            portfolio_snapshot=portfolio,
-            started_at=datetime.now(),
+            symbol_count=len(symbols),
         )
 
-        # Run the workflow (returns dict due to LangGraph serialization)
-        result_dict = await trading_graph.ainvoke(state)
+        start_time = datetime.now()
 
-        # Convert dict back to TradingState
-        return self._dict_to_state(result_dict)
+        try:
+            # Load current portfolio state
+            portfolio = await self._load_portfolio_snapshot()
+
+            # Create initial state
+            state = TradingState(
+                cycle_type="scheduled",
+                symbols=symbols,
+                portfolio_snapshot=portfolio,
+                started_at=start_time,
+            )
+
+            # Run the workflow (returns dict due to LangGraph serialization)
+            result_dict = await trading_graph.ainvoke(state)
+
+            # Convert dict back to TradingState
+            result = self._dict_to_state(result_dict)
+            result.started_at = start_time  # Preserve original start time
+
+            duration = (datetime.now() - start_time).total_seconds()
+            log.info(
+                "cycle_completed",
+                cycle_id=str(result.cycle_id),
+                cycle_type="scheduled",
+                duration_seconds=duration,
+                signals=len(result.signals),
+                execute_decisions=len(result.get_execute_decisions()),
+                errors=len(result.errors),
+            )
+
+            return result
+
+        except Exception as e:
+            log.error("cycle_failed", cycle_type="scheduled", error=str(e), exc_info=True)
+            raise
 
     async def run_event_cycle(
         self,
@@ -107,24 +146,55 @@ class TradingCycleRunner:
 
         Returns:
             TradingState with all agent outputs populated
+
+        Raises:
+            ValueError: If circuit breaker is active or trading is disabled
         """
-        # Load current portfolio state
-        portfolio = await self._load_portfolio_snapshot()
+        # Check circuit breaker before starting
+        if await self._is_circuit_breaker_active():
+            raise ValueError("Trading halted by circuit breaker")
 
-        # Create initial state
-        state = TradingState(
-            cycle_type="event",
-            trigger_symbol=trigger_symbol,
-            symbols=[trigger_symbol],  # Focus on the triggering symbol
-            portfolio_snapshot=portfolio,
-            started_at=datetime.now(),
-        )
+        log.info("cycle_started", cycle_type="event", trigger_symbol=trigger_symbol)
 
-        # Run the workflow (returns dict due to LangGraph serialization)
-        result_dict = await trading_graph.ainvoke(state)
+        start_time = datetime.now()
 
-        # Convert dict back to TradingState
-        return self._dict_to_state(result_dict)
+        try:
+            # Load current portfolio state
+            portfolio = await self._load_portfolio_snapshot()
+
+            # Create initial state
+            state = TradingState(
+                cycle_type="event",
+                trigger_symbol=trigger_symbol,
+                symbols=[trigger_symbol],  # Focus on the triggering symbol
+                portfolio_snapshot=portfolio,
+                started_at=start_time,
+            )
+
+            # Run the workflow (returns dict due to LangGraph serialization)
+            result_dict = await trading_graph.ainvoke(state)
+
+            # Convert dict back to TradingState
+            result = self._dict_to_state(result_dict)
+            result.started_at = start_time  # Preserve original start time
+
+            duration = (datetime.now() - start_time).total_seconds()
+            log.info(
+                "cycle_completed",
+                cycle_id=str(result.cycle_id),
+                cycle_type="event",
+                trigger_symbol=trigger_symbol,
+                duration_seconds=duration,
+                signals=len(result.signals),
+                execute_decisions=len(result.get_execute_decisions()),
+                errors=len(result.errors),
+            )
+
+            return result
+
+        except Exception as e:
+            log.error("cycle_failed", cycle_type="event", trigger_symbol=trigger_symbol, error=str(e), exc_info=True)
+            raise
 
     def _dict_to_state(self, data: dict[str, Any]) -> TradingState:
         """
@@ -132,51 +202,109 @@ class TradingCycleRunner:
 
         LangGraph serializes dataclasses to dicts, so we need to
         reconstruct the TradingState and its nested objects.
+
+        Args:
+            data: Dictionary from LangGraph output
+
+        Returns:
+            Reconstructed TradingState object
+
+        Raises:
+            ValueError: If data is invalid or missing required fields
         """
-        # Reconstruct nested objects from dicts
-        signals = [
-            Signal(**s) if isinstance(s, dict) else s
-            for s in data.get("signals", [])
-        ]
+        if not isinstance(data, dict):
+            raise ValueError(f"Expected dict from LangGraph, got {type(data).__name__}")
 
-        risk_assessments = [
-            RiskAssessment(**ra) if isinstance(ra, dict) else ra
-            for ra in data.get("risk_assessments", [])
-        ]
+        # Validate required fields
+        required_fields = ["cycle_id", "cycle_type", "symbols"]
+        missing = [f for f in required_fields if f not in data]
+        if missing:
+            raise ValueError(f"Missing required fields in LangGraph output: {missing}")
 
-        validations = [
-            Validation(**v) if isinstance(v, dict) else v
-            for v in data.get("validations", [])
-        ]
+        try:
+            # Reconstruct nested objects from dicts
+            signals = []
+            for s in data.get("signals", []):
+                if isinstance(s, dict):
+                    # Handle UUID conversion
+                    if "id" in s and isinstance(s["id"], str):
+                        s["id"] = UUID(s["id"])
+                    if "action" in s and isinstance(s["action"], str):
+                        s["action"] = SignalAction(s["action"])
+                    signals.append(Signal(**s))
+                else:
+                    signals.append(s)
 
-        final_decisions = [
-            FinalDecision(**fd) if isinstance(fd, dict) else fd
-            for fd in data.get("final_decisions", [])
-        ]
+            risk_assessments = []
+            for ra in data.get("risk_assessments", []):
+                if isinstance(ra, dict):
+                    if "signal_id" in ra and isinstance(ra["signal_id"], str):
+                        ra["signal_id"] = UUID(ra["signal_id"])
+                    risk_assessments.append(RiskAssessment(**ra))
+                else:
+                    risk_assessments.append(ra)
 
-        execution_results = [
-            ExecutionResult(**er) if isinstance(er, dict) else er
-            for er in data.get("execution_results", [])
-        ]
+            validations = []
+            for v in data.get("validations", []):
+                if isinstance(v, dict):
+                    if "signal_id" in v and isinstance(v["signal_id"], str):
+                        v["signal_id"] = UUID(v["signal_id"])
+                    validations.append(Validation(**v))
+                else:
+                    validations.append(v)
 
-        portfolio = data.get("portfolio_snapshot", {})
-        if isinstance(portfolio, dict):
-            portfolio = PortfolioSnapshot(**portfolio)
+            final_decisions = []
+            for fd in data.get("final_decisions", []):
+                if isinstance(fd, dict):
+                    if "signal_id" in fd and isinstance(fd["signal_id"], str):
+                        fd["signal_id"] = UUID(fd["signal_id"])
+                    if "decision" in fd and isinstance(fd["decision"], str):
+                        fd["decision"] = Decision(fd["decision"])
+                    final_decisions.append(FinalDecision(**fd))
+                else:
+                    final_decisions.append(fd)
 
-        return TradingState(
-            cycle_id=data.get("cycle_id"),
-            cycle_type=data.get("cycle_type", "scheduled"),
-            trigger_symbol=data.get("trigger_symbol"),
-            started_at=data.get("started_at"),
-            symbols=data.get("symbols", []),
-            portfolio_snapshot=portfolio,
-            signals=signals,
-            risk_assessments=risk_assessments,
-            validations=validations,
-            final_decisions=final_decisions,
-            execution_results=execution_results,
-            errors=data.get("errors", []),
-        )
+            execution_results = []
+            for er in data.get("execution_results", []):
+                if isinstance(er, dict):
+                    if "signal_id" in er and isinstance(er["signal_id"], str):
+                        er["signal_id"] = UUID(er["signal_id"]) if er["signal_id"] else None
+                    if "trade_id" in er and isinstance(er["trade_id"], str):
+                        er["trade_id"] = UUID(er["trade_id"]) if er["trade_id"] else None
+                    execution_results.append(ExecutionResult(**er))
+                else:
+                    execution_results.append(er)
+
+            portfolio = data.get("portfolio_snapshot", {})
+            if isinstance(portfolio, dict):
+                portfolio = PortfolioSnapshot(**portfolio)
+            elif not isinstance(portfolio, PortfolioSnapshot):
+                # Fallback to default if invalid
+                portfolio = PortfolioSnapshot()
+
+            # Handle cycle_id UUID conversion
+            cycle_id = data.get("cycle_id")
+            if isinstance(cycle_id, str):
+                cycle_id = UUID(cycle_id)
+
+            return TradingState(
+                cycle_id=cycle_id,
+                cycle_type=data.get("cycle_type", "scheduled"),
+                trigger_symbol=data.get("trigger_symbol"),
+                started_at=data.get("started_at"),
+                symbols=data.get("symbols", []),
+                portfolio_snapshot=portfolio,
+                signals=signals,
+                risk_assessments=risk_assessments,
+                validations=validations,
+                final_decisions=final_decisions,
+                execution_results=execution_results,
+                errors=data.get("errors", []),
+            )
+
+        except (ValueError, TypeError, KeyError) as e:
+            log.error("state_reconstruction_failed", error=str(e), data_keys=list(data.keys()))
+            raise ValueError(f"Failed to reconstruct TradingState: {e}") from e
 
     async def _load_portfolio_snapshot(self) -> PortfolioSnapshot:
         """
@@ -218,9 +346,9 @@ class TradingCycleRunner:
                 )
 
             # Load positions
-            positions_result = await self.db_session.execute(
-                select(Position).where(Position.portfolio_state_id == 1)
-            )
+            # Note: Position model doesn't have portfolio_state_id foreign key
+            # Positions are identified by symbol (unique), so we load all positions
+            positions_result = await self.db_session.execute(select(Position))
             positions = positions_result.scalars().all()
 
             # Build positions dict and sector exposure
@@ -232,7 +360,7 @@ class TradingCycleRunner:
                     "quantity": pos.quantity,
                     "value": pos.current_value,
                     "sector": pos.sector,
-                    "avg_cost": pos.average_cost,
+                    "avg_cost": pos.avg_cost,  # Fixed: model field is avg_cost, not average_cost
                 }
 
                 # Accumulate sector exposure
@@ -250,8 +378,9 @@ class TradingCycleRunner:
                 sector_exposure=sector_exposure,
             )
 
-        except Exception:
+        except Exception as e:
             # On any DB error, return safe default
+            log.warning("portfolio_load_failed", error=str(e), using_default=True)
             return PortfolioSnapshot(
                 cash=settings.trading.initial_capital,
                 total_value=settings.trading.initial_capital,
@@ -260,3 +389,43 @@ class TradingCycleRunner:
                 positions={},
                 sector_exposure={},
             )
+
+    async def _is_circuit_breaker_active(self) -> bool:
+        """
+        Check if circuit breaker is active or trading is disabled.
+
+        Returns:
+            True if trading should be halted, False otherwise
+        """
+        if self.db_session is None:
+            # No DB session - assume trading is enabled
+            return False
+
+        try:
+            result = await self.db_session.execute(
+                select(SystemState).where(SystemState.id == 1)
+            )
+            system_state = result.scalar_one_or_none()
+
+            if system_state is None:
+                # No system state in DB - assume trading is enabled
+                return False
+
+            # Check if trading is disabled or circuit breaker is active
+            if not system_state.trading_enabled:
+                log.warning("trading_disabled", reason="trading_enabled=false")
+                return True
+
+            if system_state.circuit_breaker_active:
+                log.warning(
+                    "circuit_breaker_active",
+                    reason=system_state.circuit_breaker_reason or "unknown",
+                )
+                return True
+
+            return False
+
+        except Exception as e:
+            # On error, log but don't block trading (fail open)
+            log.error("circuit_breaker_check_failed", error=str(e))
+            return False

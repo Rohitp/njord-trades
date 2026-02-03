@@ -45,15 +45,15 @@ class TestGraphExecution:
     """Tests for graph execution with mocked agents."""
 
     @pytest.mark.asyncio
-    async def test_empty_symbols_returns_empty_state(self):
-        """Graph with no symbols should return state with empty outputs."""
+    async def test_empty_symbols_skips_downstream_agents(self):
+        """Graph with no symbols should skip downstream agents (conditional edges)."""
         # Patch all agents to return state unchanged
         with patch("src.workflows.graph._data_agent") as mock_data, \
              patch("src.workflows.graph._risk_manager") as mock_risk, \
              patch("src.workflows.graph._validator") as mock_validator, \
              patch("src.workflows.graph._meta_agent") as mock_meta:
 
-            # Each agent just returns state unchanged
+            # Each agent just returns state unchanged (no signals generated)
             mock_data.run = AsyncMock(side_effect=lambda s: s)
             mock_risk.run = AsyncMock(side_effect=lambda s: s)
             mock_validator.run = AsyncMock(side_effect=lambda s: s)
@@ -62,11 +62,11 @@ class TestGraphExecution:
             state = TradingState(symbols=[])
             result = await trading_graph.ainvoke(state)
 
-            # All agents should be called even with empty symbols
+            # Only data_agent should be called - others skipped due to no signals
             mock_data.run.assert_called_once()
-            mock_risk.run.assert_called_once()
-            mock_validator.run.assert_called_once()
-            mock_meta.run.assert_called_once()
+            mock_risk.run.assert_not_called()  # Skipped: no signals
+            mock_validator.run.assert_not_called()  # Skipped: no approved signals
+            mock_meta.run.assert_not_called()  # Skipped: no validated signals
 
     @pytest.mark.asyncio
     async def test_state_flows_through_pipeline(self):

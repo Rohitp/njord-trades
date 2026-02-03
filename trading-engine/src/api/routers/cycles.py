@@ -5,6 +5,7 @@ Provides endpoints to trigger and monitor trading cycles.
 """
 
 from datetime import datetime
+from enum import Enum
 from typing import Any
 from uuid import UUID
 
@@ -13,8 +14,17 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.connection import get_session
+from src.utils.logging import get_logger
 from src.workflows.runner import TradingCycleRunner
 from src.workflows.state import Decision, SignalAction
+
+log = get_logger(__name__)
+
+
+class CycleType(str, Enum):
+    """Type of trading cycle."""
+    SCHEDULED = "scheduled"
+    EVENT = "event"
 
 
 # =============================================================================
@@ -29,8 +39,8 @@ class RunCycleRequest(BaseModel):
         default=None,
         description="Symbols to analyze. If not provided, uses watchlist from config.",
     )
-    cycle_type: str = Field(
-        default="scheduled",
+    cycle_type: CycleType = Field(
+        default=CycleType.SCHEDULED,
         description="Type of cycle: 'scheduled' or 'event'",
     )
     trigger_symbol: str | None = Field(
@@ -94,6 +104,8 @@ class CycleResultResponse(BaseModel):
     cycle_id: str
     cycle_type: str
     started_at: datetime
+    completed_at: datetime | None = None
+    duration_seconds: float | None = None
     symbols: list[str]
 
     # Agent outputs
@@ -135,21 +147,32 @@ async def run_trading_cycle(
 
     Returns the complete cycle results including all agent outputs.
     """
+    start_time = datetime.now()
     runner = TradingCycleRunner(db_session=db)
 
     try:
-        if request.cycle_type == "event" and request.trigger_symbol:
+        if request.cycle_type == CycleType.EVENT and request.trigger_symbol:
             result = await runner.run_event_cycle(request.trigger_symbol)
         else:
             result = await runner.run_scheduled_cycle(request.symbols)
+    except ValueError as e:
+        # Circuit breaker or validation errors
+        log.warning("cycle_rejected", error=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        log.error("cycle_failed", error=str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Cycle failed: {str(e)}")
+
+    completed_at = datetime.now()
+    duration = (completed_at - start_time).total_seconds()
 
     # Convert state to response
     return CycleResultResponse(
         cycle_id=str(result.cycle_id),
         cycle_type=result.cycle_type,
         started_at=result.started_at,
+        completed_at=completed_at,
+        duration_seconds=duration,
         symbols=result.symbols,
         signals=[
             SignalResponse(

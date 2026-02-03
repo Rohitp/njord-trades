@@ -2,9 +2,9 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, Integer, Numeric, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -198,6 +198,13 @@ class Trade(Base):
         onupdate=func.now()
     )
 
+    # Relationships
+    capital_events: Mapped[list["CapitalEvent"]] = relationship(
+        "CapitalEvent",
+        back_populates="trade",
+        lazy="selectin",  # Eager load to avoid N+1 queries
+    )
+
 
 class CapitalEvent(Base):
     """
@@ -223,8 +230,20 @@ class CapitalEvent(Base):
     amount: Mapped[float] = mapped_column(Numeric(12, 2))
     balance_after: Mapped[float] = mapped_column(Numeric(12, 2))  # Portfolio value after event
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    trade_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)  # Link to trade if applicable
+    trade_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("trades.id", ondelete="SET NULL"),  # Keep capital event even if trade deleted
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    # Relationships
+    trade: Mapped["Trade | None"] = relationship(
+        "Trade",
+        back_populates="capital_events",
+        lazy="joined",  # Eager load since we usually want trade details
+    )
 
 
 class Strategy(Base):
