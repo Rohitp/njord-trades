@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.database.models import Position, PortfolioState, SystemState
+from src.services.persistence import CyclePersistenceService
 from src.utils.logging import get_logger
 from src.workflows.graph import trading_graph
 from src.workflows.state import (
@@ -116,6 +117,10 @@ class TradingCycleRunner:
             result.started_at = start_time  # Preserve original start time
 
             duration = (datetime.now() - start_time).total_seconds()
+
+            # Persist cycle results to database for audit trail
+            await self._persist_cycle_results(result, duration)
+
             log.info(
                 "cycle_completed",
                 cycle_id=str(result.cycle_id),
@@ -179,6 +184,10 @@ class TradingCycleRunner:
             result.started_at = start_time  # Preserve original start time
 
             duration = (datetime.now() - start_time).total_seconds()
+
+            # Persist cycle results to database for audit trail
+            await self._persist_cycle_results(result, duration)
+
             log.info(
                 "cycle_completed",
                 cycle_id=str(result.cycle_id),
@@ -195,6 +204,33 @@ class TradingCycleRunner:
         except Exception as e:
             log.error("cycle_failed", cycle_type="event", trigger_symbol=trigger_symbol, error=str(e), exc_info=True)
             raise
+
+    async def _persist_cycle_results(
+        self,
+        state: TradingState,
+        duration_seconds: float,
+    ) -> None:
+        """
+        Persist cycle results to the events table for audit trail.
+
+        Args:
+            state: Complete trading state with all outputs
+            duration_seconds: How long the cycle took
+        """
+        if self.db_session is None:
+            log.debug("persistence_skipped", reason="no_db_session")
+            return
+
+        try:
+            persistence = CyclePersistenceService(self.db_session)
+            await persistence.record_full_cycle(state, duration_seconds)
+        except Exception as e:
+            # Don't fail the cycle if persistence fails - log and continue
+            log.error(
+                "persistence_failed",
+                cycle_id=str(state.cycle_id),
+                error=str(e),
+            )
 
     def _dict_to_state(self, data: dict[str, Any]) -> TradingState:
         """

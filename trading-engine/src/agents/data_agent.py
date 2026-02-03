@@ -10,12 +10,12 @@ The agent focuses purely on technical analysis and does not consider
 portfolio constraints (that's the Risk Manager's job).
 """
 
-import json
 from typing import Any
 
 from src.agents.base import BaseAgent
 from src.config import settings
 from src.services.market_data import MarketDataService, Quote, TechnicalIndicators
+from src.utils.llm import parse_json_list
 from src.workflows.state import Signal, SignalAction, TradingState
 
 
@@ -224,48 +224,32 @@ class DataAgent(BaseAgent):
         Returns:
             List of parsed Signal objects
         """
+        # Use shared JSON parsing utility
+        parsed_list = parse_json_list(response, context="DataAgent signals")
+
         signals = []
+        for item in parsed_list:
+            symbol = item.get("symbol", "")
 
-        # Extract JSON from response (may be wrapped in markdown code blocks)
-        json_str = response
-        if "```json" in response:
-            json_str = response.split("```json")[1].split("```")[0]
-        elif "```" in response:
-            json_str = response.split("```")[1].split("```")[0]
+            # Get market data to enrich signal
+            data = market_context.get(symbol, {})
+            quote = data.get("quote")
+            indicators = data.get("indicators")
 
-        try:
-            parsed = json.loads(json_str.strip())
-
-            # Handle single object or array
-            if isinstance(parsed, dict):
-                parsed = [parsed]
-
-            for item in parsed:
-                symbol = item.get("symbol", "")
-
-                # Get market data to enrich signal
-                data = market_context.get(symbol, {})
-                quote = data.get("quote")
-                indicators = data.get("indicators")
-
-                signal = Signal(
-                    symbol=symbol,
-                    action=SignalAction(item.get("action", "HOLD")),
-                    confidence=float(item.get("confidence", 0.0)),
-                    proposed_quantity=int(item.get("proposed_quantity", 0)),
-                    reasoning=item.get("reasoning", ""),
-                    # Enrich with actual market data
-                    price=quote.price if quote else 0.0,
-                    sma_20=indicators.sma_20 if indicators else None,
-                    sma_50=indicators.sma_50 if indicators else None,
-                    sma_200=indicators.sma_200 if indicators else None,
-                    rsi_14=indicators.rsi_14 if indicators else None,
-                    volume_ratio=indicators.volume_ratio if indicators else None,
-                )
-                signals.append(signal)
-
-        except json.JSONDecodeError as e:
-            # If parsing fails, create an error signal
-            raise ValueError(f"Failed to parse LLM response as JSON: {e}")
+            signal = Signal(
+                symbol=symbol,
+                action=SignalAction(item.get("action", "HOLD")),
+                confidence=float(item.get("confidence", 0.0)),
+                proposed_quantity=int(item.get("proposed_quantity", 0)),
+                reasoning=item.get("reasoning", ""),
+                # Enrich with actual market data
+                price=quote.price if quote else 0.0,
+                sma_20=indicators.sma_20 if indicators else None,
+                sma_50=indicators.sma_50 if indicators else None,
+                sma_200=indicators.sma_200 if indicators else None,
+                rsi_14=indicators.rsi_14 if indicators else None,
+                volume_ratio=indicators.volume_ratio if indicators else None,
+            )
+            signals.append(signal)
 
         return signals

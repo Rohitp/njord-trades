@@ -20,6 +20,11 @@ from langgraph.graph import StateGraph, START, END
 from src.agents import DataAgent, RiskManager, Validator, MetaAgent
 from src.services.market_data import MarketDataService
 from src.utils.logging import get_logger
+from src.utils.metrics import (
+    record_agent_execution,
+    agent_signals_generated,
+    record_hard_constraint_violation,
+)
 from src.workflows.state import TradingState
 
 log = get_logger(__name__)
@@ -53,7 +58,14 @@ async def data_agent_node(state: TradingState) -> TradingState:
     Output: TradingState with signals[] populated
     """
     log.debug("data_agent_node_start", symbols=state.symbols, cycle_id=str(state.cycle_id))
-    result = await _data_agent.run(state)
+
+    async with record_agent_execution("DataAgent"):
+        result = await _data_agent.run(state)
+
+    # Record signal metrics
+    for signal in result.signals:
+        agent_signals_generated.labels(action=signal.action.value).inc()
+
     log.debug("data_agent_node_complete", signals_generated=len(result.signals))
     return result
 
@@ -66,7 +78,23 @@ async def risk_manager_node(state: TradingState) -> TradingState:
     Output: TradingState with risk_assessments[] populated
     """
     log.debug("risk_manager_node_start", signals_count=len(state.signals))
-    result = await _risk_manager.run(state)
+
+    async with record_agent_execution("RiskManager"):
+        result = await _risk_manager.run(state)
+
+    # Record hard constraint violation metrics
+    for ra in result.risk_assessments:
+        if ra.hard_constraint_violated and ra.hard_constraint_reason:
+            reason = ra.hard_constraint_reason.lower()
+            if "cash" in reason:
+                record_hard_constraint_violation("insufficient_cash")
+            elif "position" in reason and "20%" in reason:
+                record_hard_constraint_violation("max_position")
+            elif "sector" in reason:
+                record_hard_constraint_violation("max_sector")
+            elif "max positions" in reason:
+                record_hard_constraint_violation("max_positions")
+
     approved = len([ra for ra in result.risk_assessments if ra.approved])
     log.debug("risk_manager_node_complete", approved=approved, total=len(result.risk_assessments))
     return result
@@ -80,7 +108,10 @@ async def validator_node(state: TradingState) -> TradingState:
     Output: TradingState with validations[] populated
     """
     log.debug("validator_node_start", signals_count=len(state.signals))
-    result = await _validator.run(state)
+
+    async with record_agent_execution("Validator"):
+        result = await _validator.run(state)
+
     approved = len([v for v in result.validations if v.approved])
     log.debug("validator_node_complete", approved=approved, total=len(result.validations))
     return result
@@ -94,7 +125,10 @@ async def meta_agent_node(state: TradingState) -> TradingState:
     Output: TradingState with final_decisions[] populated
     """
     log.debug("meta_agent_node_start", signals_count=len(state.signals))
-    result = await _meta_agent.run(state)
+
+    async with record_agent_execution("MetaAgent"):
+        result = await _meta_agent.run(state)
+
     execute_count = len(result.get_execute_decisions())
     log.debug("meta_agent_node_complete", execute_decisions=execute_count, total=len(result.final_decisions))
     return result

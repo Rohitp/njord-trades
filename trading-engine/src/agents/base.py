@@ -17,7 +17,11 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from src.config import settings
+from src.utils.logging import get_logger
+from src.utils.retry import retry_llm_call
 from src.workflows.state import TradingState
+
+log = get_logger(__name__)
 
 
 class BaseAgent(ABC):
@@ -122,20 +126,44 @@ class BaseAgent(ABC):
         """
         Call the LLM with system and user prompts.
 
+        Includes retry logic with exponential backoff for:
+        - Rate limit errors (429)
+        - Server errors (500, 502, 503, 504)
+        - Network timeouts
+
         Args:
             system_prompt: The agent's role and instructions
             user_prompt: The specific request with context data
 
         Returns:
             The LLM's response text
+
+        Raises:
+            Exception: If all retries exhausted or non-retryable error
         """
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
         ]
 
-        response = await self.llm.ainvoke(messages)
-        return response.content
+        async def _invoke():
+            response = await self.llm.ainvoke(messages)
+            return response.content
+
+        # Use retry wrapper with context for logging
+        result = await retry_llm_call(
+            _invoke,
+            context=f"{self.name} LLM call",
+        )
+
+        log.debug(
+            "llm_call_complete",
+            agent=self.name,
+            model=self.model_name,
+            response_length=len(result) if result else 0,
+        )
+
+        return result
 
     def _format_portfolio_context(self, state: TradingState) -> str:
         """

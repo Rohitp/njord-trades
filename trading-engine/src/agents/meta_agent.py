@@ -15,11 +15,11 @@ The Meta Agent CANNOT override hard constraints (those are enforced in code).
 It can only decide between signals that passed all previous checks.
 """
 
-import json
 from uuid import UUID
 
 from src.agents.base import BaseAgent
 from src.config import settings
+from src.utils.llm import parse_json_list
 from src.workflows.state import (
     Decision,
     FinalDecision,
@@ -217,38 +217,25 @@ class MetaAgent(BaseAgent):
         signals: list[Signal],
     ) -> list[FinalDecision]:
         """Parse LLM response into FinalDecision objects."""
-        decisions = []
-
-        # Extract JSON from response
-        json_str = response
-        if "```json" in response:
-            json_str = response.split("```json")[1].split("```")[0]
-        elif "```" in response:
-            json_str = response.split("```")[1].split("```")[0]
+        # Use shared JSON parsing utility
+        parsed_list = parse_json_list(response, context="MetaAgent decisions")
 
         signal_map = {str(s.id): s for s in signals}
 
-        try:
-            parsed = json.loads(json_str.strip())
-            if isinstance(parsed, dict):
-                parsed = [parsed]
+        decisions = []
+        for item in parsed_list:
+            signal_id_str = item.get("signal_id", "")
+            signal = signal_map.get(signal_id_str)
+            if not signal:
+                continue
 
-            for item in parsed:
-                signal_id_str = item.get("signal_id", "")
-                signal = signal_map.get(signal_id_str)
-                if not signal:
-                    continue
-
-                decision = FinalDecision(
-                    signal_id=signal.id,
-                    decision=Decision(item.get("decision", "DO_NOT_EXECUTE")),
-                    final_quantity=int(item.get("final_quantity", 0)),
-                    confidence=float(item.get("confidence", 0.0)),
-                    reasoning=item.get("reasoning", ""),
-                )
-                decisions.append(decision)
-
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse decision JSON: {e}")
+            decision = FinalDecision(
+                signal_id=signal.id,
+                decision=Decision(item.get("decision", "DO_NOT_EXECUTE")),
+                final_quantity=int(item.get("final_quantity", 0)),
+                confidence=float(item.get("confidence", 0.0)),
+                reasoning=item.get("reasoning", ""),
+            )
+            decisions.append(decision)
 
         return decisions

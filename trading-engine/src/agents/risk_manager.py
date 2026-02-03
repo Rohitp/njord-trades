@@ -17,11 +17,9 @@ These are checked programmatically before LLM analysis to ensure
 they cannot be bypassed by LLM hallucination or prompt injection.
 """
 
-import json
-from uuid import UUID
-
 from src.agents.base import BaseAgent
 from src.config import settings
+from src.utils.llm import parse_json_list
 from src.workflows.state import (
     RiskAssessment,
     Signal,
@@ -315,42 +313,29 @@ class RiskManager(BaseAgent):
         signals: list[Signal],
     ) -> list[RiskAssessment]:
         """Parse LLM response into RiskAssessment objects."""
-        assessments = []
-
-        # Extract JSON from response
-        json_str = response
-        if "```json" in response:
-            json_str = response.split("```json")[1].split("```")[0]
-        elif "```" in response:
-            json_str = response.split("```")[1].split("```")[0]
+        # Use shared JSON parsing utility
+        parsed_list = parse_json_list(response, context="RiskManager assessments")
 
         # Create lookup for signals
         signal_map = {str(s.id): s for s in signals}
 
-        try:
-            parsed = json.loads(json_str.strip())
-            if isinstance(parsed, dict):
-                parsed = [parsed]
+        assessments = []
+        for item in parsed_list:
+            signal_id_str = item.get("signal_id", "")
 
-            for item in parsed:
-                signal_id_str = item.get("signal_id", "")
+            # Find matching signal
+            signal = signal_map.get(signal_id_str)
+            if not signal:
+                continue
 
-                # Find matching signal
-                signal = signal_map.get(signal_id_str)
-                if not signal:
-                    continue
-
-                assessment = RiskAssessment(
-                    signal_id=signal.id,
-                    approved=item.get("approved", False),
-                    adjusted_quantity=int(item.get("adjusted_quantity", 0)),
-                    risk_score=float(item.get("risk_score", 0.5)),
-                    concerns=item.get("concerns", []),
-                    reasoning=item.get("reasoning", ""),
-                )
-                assessments.append(assessment)
-
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse risk assessment JSON: {e}")
+            assessment = RiskAssessment(
+                signal_id=signal.id,
+                approved=item.get("approved", False),
+                adjusted_quantity=int(item.get("adjusted_quantity", 0)),
+                risk_score=float(item.get("risk_score", 0.5)),
+                concerns=item.get("concerns", []),
+                reasoning=item.get("reasoning", ""),
+            )
+            assessments.append(assessment)
 
         return assessments

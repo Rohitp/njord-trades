@@ -12,11 +12,11 @@ by looking for problematic patterns:
 This agent can access trade history to identify patterns the other agents miss.
 """
 
-import json
 from uuid import UUID
 
 from src.agents.base import BaseAgent
 from src.config import settings
+from src.utils.llm import parse_json_list
 from src.workflows.state import (
     RiskAssessment,
     Signal,
@@ -188,41 +188,28 @@ class Validator(BaseAgent):
         signals: list[Signal],
     ) -> list[Validation]:
         """Parse LLM response into Validation objects."""
-        validations = []
-
-        # Extract JSON from response
-        json_str = response
-        if "```json" in response:
-            json_str = response.split("```json")[1].split("```")[0]
-        elif "```" in response:
-            json_str = response.split("```")[1].split("```")[0]
+        # Use shared JSON parsing utility
+        parsed_list = parse_json_list(response, context="Validator validations")
 
         signal_map = {str(s.id): s for s in signals}
 
-        try:
-            parsed = json.loads(json_str.strip())
-            if isinstance(parsed, dict):
-                parsed = [parsed]
+        validations = []
+        for item in parsed_list:
+            signal_id_str = item.get("signal_id", "")
+            signal = signal_map.get(signal_id_str)
+            if not signal:
+                continue
 
-            for item in parsed:
-                signal_id_str = item.get("signal_id", "")
-                signal = signal_map.get(signal_id_str)
-                if not signal:
-                    continue
-
-                validation = Validation(
-                    signal_id=signal.id,
-                    approved=item.get("approved", False),
-                    concerns=item.get("concerns", []),
-                    suggestions=item.get("suggestions", []),
-                    reasoning=item.get("reasoning", ""),
-                    repetition_detected=item.get("repetition_detected", False),
-                    sector_clustering_detected=item.get("sector_clustering_detected", False),
-                    similar_setup_failures=int(item.get("similar_setup_failures", 0)),
-                )
-                validations.append(validation)
-
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse validation JSON: {e}")
+            validation = Validation(
+                signal_id=signal.id,
+                approved=item.get("approved", False),
+                concerns=item.get("concerns", []),
+                suggestions=item.get("suggestions", []),
+                reasoning=item.get("reasoning", ""),
+                repetition_detected=item.get("repetition_detected", False),
+                sector_clustering_detected=item.get("sector_clustering_detected", False),
+                similar_setup_failures=int(item.get("similar_setup_failures", 0)),
+            )
+            validations.append(validation)
 
         return validations
