@@ -51,10 +51,13 @@ class BaseAgent(ABC):
         """
         Create the LangChain LLM client for this agent.
 
-        Uses settings.llm.default_provider to choose between Anthropic and OpenAI.
-        Falls back to Anthropic if provider is unknown.
+        Infers provider from model name:
+        - claude-* → Anthropic
+        - gpt-*, o1-*, o3-* → OpenAI
+
+        Falls back to settings.llm.default_provider if model name is ambiguous.
         """
-        provider = settings.llm.default_provider.lower()
+        provider = self._infer_provider(self.model_name)
 
         if provider == "openai":
             return ChatOpenAI(
@@ -65,7 +68,6 @@ class BaseAgent(ABC):
                 temperature=0.0,
             )
         else:
-            # Default to Anthropic
             return ChatAnthropic(
                 model=self.model_name,
                 api_key=settings.llm.anthropic_api_key,
@@ -73,6 +75,29 @@ class BaseAgent(ABC):
                 timeout=60.0,
                 temperature=0.0,
             )
+
+    def _infer_provider(self, model_name: str) -> str:
+        """
+        Infer the LLM provider from the model name.
+
+        Args:
+            model_name: The model identifier (e.g., "claude-3-5-sonnet-20241022")
+
+        Returns:
+            "anthropic" or "openai"
+        """
+        model_lower = model_name.lower()
+
+        # OpenAI models
+        if model_lower.startswith(("gpt-", "o1-", "o3-")):
+            return "openai"
+
+        # Anthropic models
+        if model_lower.startswith("claude"):
+            return "anthropic"
+
+        # Fall back to default provider from config
+        return settings.llm.default_provider.lower()
 
     @abstractmethod
     async def run(self, state: TradingState) -> TradingState:
