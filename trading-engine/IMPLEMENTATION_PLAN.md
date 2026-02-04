@@ -171,9 +171,9 @@
 - [x] Integrate into `src/workflows/runner.py` (event cycles)
 - [x] Integrate into `src/scheduler/event_monitor_job.py`
 - [x] Test auto-resume conditions:
-  - Drawdown recovery < 15%
-  - Win streak of 3+
-  - Sharpe ratio > 0.3 for 7 days (not yet implemented)
+  - Drawdown recovery < 15% ✓
+  - Win streak of 3+ ✓
+  - Sharpe ratio > 0.3 for 7 days ⚠️ **NOT YET IMPLEMENTED** (requires historical returns calculation)
 
 ### 6.2 Manual Approval ✓
 - [x] Require manual approval via API before resuming

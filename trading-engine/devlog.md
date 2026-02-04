@@ -1689,9 +1689,11 @@ Implemented auto-resume condition checking for the circuit breaker. The system n
 - Uses auto-resume reason in reset message when conditions are met
 
 **Auto-Resume Conditions**:
-1. **Drawdown Recovery**: Drawdown recovered to < 15% (if halted due to >20% drawdown)
-2. **Win Streak**: 3 consecutive wins (if halted due to 10 consecutive losses)
-3. **Sharpe Ratio**: > 0.3 for 7 days (not yet implemented - requires historical returns calculation)
+1. **Drawdown Recovery**: Drawdown recovered to < 15% (if halted due to >20% drawdown) ✓
+2. **Win Streak**: 3 consecutive wins (if halted due to 10 consecutive losses) ✓
+3. **Sharpe Ratio**: > 0.3 for 7 days (⚠️ **NOT YET IMPLEMENTED** - requires historical returns calculation)
+
+**Note**: Only drawdown recovery and win streak conditions are currently implemented. Sharpe ratio condition is explicitly not implemented and will be added in a future phase when historical returns calculation is available.
 
 ### Files Modified
 
@@ -1728,7 +1730,8 @@ Uses existing config values:
 
 ### Next Steps
 
-- Implement Sharpe ratio auto-resume condition (requires historical returns calculation)
+- ⚠️ **TODO**: Implement Sharpe ratio auto-resume condition (requires historical returns calculation)
+- ⚠️ **TODO**: Wire auto-resume condition logging into Phase 7 alert system so operators receive notifications when conditions are met (currently only logs, no alerts)
 - Add monitoring/alerting when auto-resume conditions are met (Phase 7: Alert System)
 
 ---

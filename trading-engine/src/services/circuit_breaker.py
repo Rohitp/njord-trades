@@ -247,6 +247,8 @@ class CircuitBreakerService:
                     return True, resume_reason
 
         # TODO: Check Sharpe ratio recovery (requires historical returns calculation)
+        # This condition is NOT YET IMPLEMENTED and will be added in a future phase
+        # when historical returns calculation is available
 
         return False, None
 

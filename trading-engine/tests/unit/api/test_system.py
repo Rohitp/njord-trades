@@ -29,8 +29,12 @@ def client(mock_db_session: AsyncSession) -> TestClient:
     app = create_app()
     
     # Override get_session dependency
+    # FastAPI async dependencies should be async generators
     from src.database.connection import get_session
-    app.dependency_overrides[get_session] = lambda: mock_db_session
+    async def override_get_session():
+        yield mock_db_session
+    
+    app.dependency_overrides[get_session] = override_get_session
     
     return TestClient(app)
 
