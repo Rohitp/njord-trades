@@ -503,6 +503,33 @@ uv run pytest tests/test_services/test_embeddings.py -v
 1. Run `make migrate-diff` to auto-generate migration for discovery tables
 2. Review and commit migration
 
+#### 2.3 Configuration ✓
+- [x] Added `DiscoverySettings` to `src/config.py`
+
+**Files Modified**:
+- `src/config.py` - Added DiscoverySettings with picker weights, enabled pickers, LLM config, schedule settings
+
+**Configuration Options**:
+- `metric_weight`, `fuzzy_weight`, `llm_weight`: Ensemble weights (default: 0.3, 0.4, 0.3)
+- `enabled_pickers`: List of enabled pickers (default: ["metric", "fuzzy", "llm"])
+- `llm_picker_model`: LLM model for LLMPicker (default: claude-3-5-sonnet-20241022)
+- `interval_hours`: Discovery job interval (default: 4 hours)
+- `max_watchlist_size`: Maximum symbols in watchlist (default: 20)
+
+#### 2.4 Data Sources ✓
+- [x] Created `src/services/discovery/sources/__init__.py`
+- [x] Created `src/services/discovery/sources/alpaca.py` (Alpaca assets API)
+
+**Files Created**:
+- `src/services/discovery/sources/__init__.py` - Module exports
+- `src/services/discovery/sources/alpaca.py` - AlpacaAssetSource for fetching tradable symbols
+
+**Features**:
+- `get_tradable_symbols()`: Fetch symbols filtered by asset class and status
+- `get_stocks()`: Convenience method for active US equity stocks
+- Async wrapper around Alpaca SDK (non-blocking)
+- Retry logic with exponential backoff
+
 ---
 
 ## TODO: Symbol Discovery System

@@ -148,6 +148,31 @@ class EmbeddingSettings(BaseSettings):
     dimensions: int = Field(default=384, description="Embedding dimensions (384 for BGE-small)")
 
 
+class DiscoverySettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="DISCOVERY_")
+
+    # Picker weights for ensemble (must sum to ~1.0)
+    metric_weight: float = Field(default=0.3, description="Weight for MetricPicker in ensemble")
+    fuzzy_weight: float = Field(default=0.4, description="Weight for FuzzyPicker in ensemble")
+    llm_weight: float = Field(default=0.3, description="Weight for LLMPicker in ensemble")
+    
+    # Enabled pickers
+    enabled_pickers: list[str] = Field(
+        default_factory=lambda: ["metric", "fuzzy", "llm"],
+        description="List of enabled pickers"
+    )
+    
+    # LLM Picker config
+    llm_picker_model: str = Field(
+        default="claude-3-5-sonnet-20241022",
+        description="LLM model for LLMPicker"
+    )
+    
+    # Discovery schedule
+    interval_hours: int = Field(default=4, description="Discovery job interval (hours)")
+    max_watchlist_size: int = Field(default=20, description="Maximum symbols in watchlist")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -165,6 +190,7 @@ class Settings(BaseSettings):
     event_monitor: EventMonitorSettings = Field(default_factory=EventMonitorSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
+    discovery: DiscoverySettings = Field(default_factory=DiscoverySettings)
 
 
 settings = Settings()
