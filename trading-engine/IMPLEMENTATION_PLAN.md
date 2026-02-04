@@ -73,13 +73,13 @@
 - [x] Weighted combination of scores
 - [x] Test scoring logic
 
-### 3.3 LLMPicker
-- [ ] Create `src/services/discovery/pickers/llm.py`
-- [ ] Build prompt with portfolio context
-- [ ] Build prompt with market conditions
-- [ ] Parse JSON response from LLM
-- [ ] Handle LLM errors gracefully
-- [ ] Test with various market conditions
+### 3.3 LLMPicker ✓
+- [x] Create `src/services/discovery/pickers/llm.py`
+- [x] Build prompt with portfolio context
+- [x] Build prompt with market conditions
+- [x] Parse JSON response from LLM
+- [x] Handle LLM errors gracefully
+- [x] Test with various market conditions
 
 ### 3.4 EnsembleCombiner
 - [ ] Create `src/services/discovery/ensemble.py`

@@ -614,6 +614,47 @@ uv run pytest tests/test_services/test_discovery_pickers.py -v
 uv run pytest tests/test_services/test_discovery_pickers.py -v
 ```
 
+#### 3.3 LLMPicker ✓
+- [x] Created `src/services/discovery/pickers/llm.py`
+- [x] Built prompt with portfolio context
+- [x] Built prompt with market conditions
+- [x] Parse JSON response from LLM
+- [x] Handle LLM errors gracefully
+- [x] Created unit tests
+
+**Files Created**:
+- `src/services/discovery/pickers/llm.py` - LLMPicker implementation
+
+**Files Modified**:
+- `src/services/discovery/pickers/__init__.py` - Export LLMPicker
+- `tests/test_services/test_discovery_pickers.py` - Added LLMPicker tests
+
+**Features**:
+- **LLM-Powered Selection**: Uses Claude/OpenAI to analyze market conditions and portfolio context
+- **Portfolio Context**: Considers current positions, sector exposure, diversification needs
+- **Market Conditions**: Incorporates volatility, trends, sector rotation signals
+- **Candidate Filtering**: Only evaluates symbols from provided candidate list
+- **Score Clamping**: Ensures scores are in [0, 1] range
+- **Error Handling**: Returns empty list on LLM errors (graceful degradation)
+- **Retry Logic**: Uses `retry_llm_call` with exponential backoff
+- **Sorted Results**: Returns ranked list (highest score first)
+
+**LLM Configuration**:
+- Model: Configurable via `settings.discovery.llm_picker_model` (default: claude-3-5-sonnet-20241022)
+- Temperature: 0.3 (slightly higher for creative selection)
+- Max Candidates: 50 symbols (to avoid token limits)
+
+**Prompt Structure**:
+- System prompt: Defines role, constraints, output format
+- User prompt: Includes portfolio positions, market conditions, candidate symbols
+- Output: JSON array with symbol, score (0.0-1.0), and reason
+
+**Testing**:
+```bash
+# Run picker tests (includes all three pickers)
+uv run pytest tests/test_services/test_discovery_pickers.py -v
+```
+
 ---
 
 ## TODO: Symbol Discovery System

@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.services.discovery.pickers.fuzzy import FuzzyPicker
+from src.services.discovery.pickers.llm import LLMPicker
 from src.services.discovery.pickers.metric import MetricPicker
 from src.services.discovery.pickers.base import PickerResult
 
@@ -226,4 +227,143 @@ class TestFuzzyPicker:
             assert len(results) == 2
             # Results should be sorted by score (highest first)
             assert results[0].score >= results[1].score
+
+
+class TestLLMPicker:
+    """Tests for LLMPicker."""
+
+    @pytest.mark.asyncio
+    async def test_llm_picker_name(self):
+        """Test that picker has correct name."""
+        picker = LLMPicker()
+        assert picker.name == "llm"
+
+    @pytest.mark.asyncio
+    async def test_llm_picker_no_alpaca(self):
+        """Test that picker returns empty list when Alpaca not configured."""
+        with patch("src.services.discovery.pickers.llm.AlpacaAssetSource") as mock_source:
+            mock_source.return_value.get_stocks.side_effect = ValueError("Alpaca not configured")
+            picker = LLMPicker()
+            results = await picker.pick()
+            assert results == []
+
+    @pytest.mark.asyncio
+    async def test_llm_picker_parses_response(self):
+        """Test that LLM response is parsed correctly."""
+        with patch("src.services.discovery.pickers.llm.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.llm.retry_llm_call") as mock_llm:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL", "MSFT"])
+            
+            # Mock LLM response
+            mock_response = MagicMock()
+            mock_response.content = """```json
+[
+    {"symbol": "AAPL", "score": 0.85, "reason": "Strong momentum"},
+    {"symbol": "MSFT", "score": 0.70, "reason": "Good value"}
+]
+```"""
+            mock_llm.return_value = mock_response
+            
+            picker = LLMPicker()
+            results = await picker.pick()
+            
+            assert len(results) == 2
+            assert results[0].symbol == "AAPL"
+            assert results[0].score == 0.85
+            assert results[1].symbol == "MSFT"
+            assert results[1].score == 0.70
+            # Results should be sorted by score
+            assert results[0].score >= results[1].score
+
+    @pytest.mark.asyncio
+    async def test_llm_picker_filters_invalid_symbols(self):
+        """Test that symbols not in candidate list are filtered out."""
+        with patch("src.services.discovery.pickers.llm.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.llm.retry_llm_call") as mock_llm:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL", "MSFT"])
+            
+            # Mock LLM response with invalid symbol
+            mock_response = MagicMock()
+            mock_response.content = """```json
+[
+    {"symbol": "AAPL", "score": 0.85, "reason": "Valid"},
+    {"symbol": "INVALID", "score": 0.90, "reason": "Not in candidate list"}
+]
+```"""
+            mock_llm.return_value = mock_response
+            
+            picker = LLMPicker()
+            results = await picker.pick()
+            
+            # Should only include AAPL (INVALID filtered out)
+            assert len(results) == 1
+            assert results[0].symbol == "AAPL"
+
+    @pytest.mark.asyncio
+    async def test_llm_picker_handles_errors(self):
+        """Test that errors are handled gracefully."""
+        with patch("src.services.discovery.pickers.llm.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.llm.retry_llm_call") as mock_llm:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            mock_llm.side_effect = ValueError("LLM error")
+            
+            picker = LLMPicker()
+            results = await picker.pick()
+            
+            # Should return empty list on error (graceful degradation)
+            assert results == []
+
+    @pytest.mark.asyncio
+    async def test_llm_picker_uses_context(self):
+        """Test that portfolio context is included in prompt."""
+        with patch("src.services.discovery.pickers.llm.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.llm.retry_llm_call") as mock_llm:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            mock_response = MagicMock()
+            mock_response.content = '[]'
+            mock_llm.return_value = mock_response
+            
+            picker = LLMPicker()
+            context = {
+                "portfolio_positions": [
+                    {"symbol": "TSLA", "quantity": 10, "current_value": 2000.0, "sector": "Technology"}
+                ],
+                "market_conditions": {"volatility": "High", "trend": "Bullish"}
+            }
+            
+            results = await picker.pick(context=context)
+            
+            # Verify context was passed to LLM (check call args)
+            assert mock_llm.called
+            # The prompt should include portfolio and market conditions
+
+    @pytest.mark.asyncio
+    async def test_llm_picker_clamps_scores(self):
+        """Test that scores are clamped to [0, 1] range."""
+        with patch("src.services.discovery.pickers.llm.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.llm.retry_llm_call") as mock_llm:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            # Mock LLM response with out-of-range scores
+            mock_response = MagicMock()
+            mock_response.content = """```json
+[
+    {"symbol": "AAPL", "score": 1.5, "reason": "Too high"},
+    {"symbol": "MSFT", "score": -0.5, "reason": "Too low"}
+]
+```"""
+            mock_llm.return_value = mock_response
+            
+            picker = LLMPicker()
+            results = await picker.pick()
+            
+            assert len(results) == 2
+            assert results[0].score == 1.0  # Clamped from 1.5
+            assert results[1].score == 0.0  # Clamped from -0.5
 
