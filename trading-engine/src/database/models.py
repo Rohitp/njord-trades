@@ -384,3 +384,82 @@ class SymbolContextEmbedding(Base):
         Index('ix_symbol_context_embeddings_embedding', 'embedding', postgresql_using='ivfflat'),
         Index('ix_symbol_context_embeddings_symbol_timestamp', 'symbol', 'timestamp'),
     )
+
+
+class DiscoveredSymbol(Base):
+    """
+    Symbols discovered by pickers.
+
+    Tracks when symbols were discovered, by which picker, and their scores.
+    Used for audit trail and performance analysis.
+    """
+    __tablename__ = "discovered_symbols"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    picker_name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # "metric", "fuzzy", "llm"
+    score: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False)  # 0.0-1.0
+    reason: Mapped[str] = mapped_column(Text, nullable=False)  # Why this symbol was picked
+    picker_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # Picker-specific data
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index('ix_discovered_symbols_symbol_picker', 'symbol', 'picker_name'),
+        Index('ix_discovered_symbols_discovered_at', 'discovered_at'),
+    )
+
+
+class Watchlist(Base):
+    """
+    Active watchlist for trading.
+
+    Manages which symbols are currently being monitored and traded.
+    Can be added manually or automatically by pickers.
+    """
+    __tablename__ = "watchlist"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    symbol: Mapped[str] = mapped_column(String(10), unique=True, nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)  # "manual", "metric", "fuzzy", "llm", "ensemble"
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # Manual notes
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+
+class PickerSuggestion(Base):
+    """
+    Suggestions from pickers with forward return tracking.
+
+    Stores each picker's suggestions and tracks actual forward returns
+    to measure picker performance over time.
+    """
+    __tablename__ = "picker_suggestions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    picker_name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    score: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False)  # 0.0-1.0
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    suggested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    
+    # Forward returns (calculated by background job)
+    forward_return_1d: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)  # 1-day return %
+    forward_return_5d: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)  # 5-day return %
+    forward_return_20d: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)  # 20-day return %
+    
+    # Tracking
+    calculated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index('ix_picker_suggestions_symbol_picker', 'symbol', 'picker_name'),
+        Index('ix_picker_suggestions_suggested_at', 'suggested_at'),
+    )

@@ -470,6 +470,41 @@ uv run pytest tests/test_services/test_embeddings.py -v
 
 ---
 
+## Phase 2: Symbol Discovery Foundation (IN PROGRESS)
+
+**Status**: IN PROGRESS
+
+#### 2.1 Base Protocols ✓
+- [x] Created `src/services/discovery/__init__.py`
+- [x] Created `src/services/discovery/pickers/base.py` (SymbolPicker ABC, PickerResult dataclass)
+- [x] Created `src/services/discovery/scoring.py` (shared scoring utilities)
+
+**Files Created**:
+- `src/services/discovery/__init__.py` - Module initialization
+- `src/services/discovery/pickers/__init__.py` - Pickers module
+- `src/services/discovery/pickers/base.py` - SymbolPicker protocol + PickerResult dataclass
+- `src/services/discovery/scoring.py` - normalize_score, liquidity_score, volatility_score, momentum_score
+
+#### 2.2 Database Models ✓
+- [x] Added `DiscoveredSymbol` model to `src/database/models.py`
+- [x] Added `Watchlist` model
+- [x] Added `PickerSuggestion` model
+- [ ] Create Alembic migration (use `make migrate-diff`)
+
+**Files Modified**:
+- `src/database/models.py` - Added 3 discovery models
+
+**Model Details**:
+- `DiscoveredSymbol`: Tracks symbols discovered by pickers (symbol, picker_name, score, reason, discovered_at)
+- `Watchlist`: Active watchlist management (symbol, source, active, added_at/removed_at)
+- `PickerSuggestion`: Picker suggestions with forward return tracking (forward_return_1d/5d/20d for performance analysis)
+
+**Next Steps**:
+1. Run `make migrate-diff` to auto-generate migration for discovery tables
+2. Review and commit migration
+
+---
+
 ## TODO: Symbol Discovery System
 
 **Status**: PLANNED
