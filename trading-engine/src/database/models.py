@@ -6,6 +6,8 @@ from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, In
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from pgvector.sqlalchemy import Vector
+
 
 class Base(DeclarativeBase):
     """Base class for all models."""
@@ -286,4 +288,99 @@ class Strategy(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now()
+    )
+
+
+class TradeEmbedding(Base):
+    """
+    Embeddings for completed trades.
+
+    Stores vector embeddings of trade context (symbol, action, reasoning, outcome)
+    for similarity search. Used by Validator to find similar failed setups.
+
+    EXAMPLE:
+        TradeEmbedding(
+            trade_id=uuid,
+            embedding=[0.12, -0.45, 0.78, ...],  # 384-dim vector
+            context_text="AAPL BUY 5 shares @ 150.0, RSI 65, volume 2x, WIN"
+        )
+    """
+    __tablename__ = "trade_embeddings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    trade_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("trades.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+        nullable=False
+    )
+    embedding: Mapped[list[float]] = mapped_column(Vector(384), nullable=False)  # BGE-small-en dimensions
+    context_text: Mapped[str] = mapped_column(Text, nullable=False)  # Text that was embedded
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Index for similarity search (IVFFlat for approximate nearest neighbor)
+    __table_args__ = (
+        Index('ix_trade_embeddings_embedding', 'embedding', postgresql_using='ivfflat'),
+    )
+
+
+class MarketConditionEmbedding(Base):
+    """
+    Embeddings for market conditions at specific times.
+
+    Stores vector embeddings of market state (VIX, SPY trend, sector performance)
+    for finding similar market regimes. Used by LLM Picker for context.
+
+    EXAMPLE:
+        MarketConditionEmbedding(
+            timestamp=datetime,
+            embedding=[0.23, -0.12, 0.45, ...],
+            context_text="VIX 25.3, SPY up 1.2%, Tech sector +2.1%, Energy -0.5%"
+        )
+    """
+    __tablename__ = "market_condition_embeddings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    embedding: Mapped[list[float]] = mapped_column(Vector(384), nullable=False)
+    context_text: Mapped[str] = mapped_column(Text, nullable=False)
+    condition_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)  # VIX, SPY, sector data
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Index for similarity search
+    __table_args__ = (
+        Index('ix_market_condition_embeddings_embedding', 'embedding', postgresql_using='ivfflat'),
+    )
+
+
+class SymbolContextEmbedding(Base):
+    """
+    Embeddings for symbol-specific context (news, events, analyst notes).
+
+    Stores vector embeddings of symbol context for finding similar situations.
+    Used by DataAgent for enrichment and Symbol Discovery.
+
+    EXAMPLE:
+        SymbolContextEmbedding(
+            symbol="AAPL",
+            embedding=[0.34, -0.21, 0.56, ...],
+            context_text="Apple announces new iPhone, analyst upgrades to buy, earnings beat"
+        )
+    """
+    __tablename__ = "symbol_context_embeddings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    embedding: Mapped[list[float]] = mapped_column(Vector(384), nullable=False)
+    context_text: Mapped[str] = mapped_column(Text, nullable=False)
+    context_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "news", "event", "analyst", etc.
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Index for similarity search
+    __table_args__ = (
+        Index('ix_symbol_context_embeddings_embedding', 'embedding', postgresql_using='ivfflat'),
+        Index('ix_symbol_context_embeddings_symbol_timestamp', 'symbol', 'timestamp'),
     )
