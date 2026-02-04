@@ -26,7 +26,7 @@ from src.config import settings
 from src.database.models import Position, PortfolioState, SystemState
 from src.services.persistence import CyclePersistenceService
 from src.utils.logging import get_logger
-from src.workflows.graph import trading_graph
+from src.workflows.graph import _db_session_context, trading_graph
 from src.workflows.state import PortfolioSnapshot, TradingState
 
 log = get_logger(__name__)
@@ -100,6 +100,10 @@ class TradingCycleRunner:
                 trace_id=trace_id,
             )
 
+            # Set db_session in context variable for use in workflow nodes
+            if self.db_session:
+                _db_session_context.set(self.db_session)
+
             # Run the workflow (returns dict due to LangGraph serialization)
             result_dict = await trading_graph.ainvoke(state)
 
@@ -168,6 +172,10 @@ class TradingCycleRunner:
                 started_at=start_time,
                 trace_id=trace_id,
             )
+
+            # Set db_session in context variable for use in workflow nodes
+            if self.db_session:
+                _db_session_context.set(self.db_session)
 
             # Run the workflow (returns dict due to LangGraph serialization)
             result_dict = await trading_graph.ainvoke(state)

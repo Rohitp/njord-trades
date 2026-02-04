@@ -15,8 +15,10 @@ Usage:
     result = await trading_graph.ainvoke(state)
 """
 
+import contextvars
 import structlog
 from langgraph.graph import StateGraph, START, END
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.agents import DataAgent, RiskManager, Validator, MetaAgent
 from src.services.market_data import MarketDataService
@@ -29,6 +31,11 @@ from src.utils.metrics import (
 from src.workflows.state import TradingState
 
 log = get_logger(__name__)
+
+# Context variable to pass db_session through the workflow
+_db_session_context: contextvars.ContextVar[AsyncSession | None] = contextvars.ContextVar(
+    "db_session", default=None
+)
 
 
 def _bind_cycle_context(state: TradingState) -> None:
@@ -121,8 +128,11 @@ async def validator_node(state: TradingState) -> TradingState:
     _bind_cycle_context(state)
     log.debug("validator_node_start", signals_count=len(state.signals))
 
+    # Get db_session from context variable (set by runner)
+    db_session = _db_session_context.get()
+
     async with record_agent_execution("Validator"):
-        result = await _validator.run(state)
+        result = await _validator.run(state, db_session=db_session)
 
     approved = len([v for v in result.validations if v.approved])
     log.debug("validator_node_complete", approved=approved, total=len(result.validations))

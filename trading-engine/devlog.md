@@ -705,9 +705,9 @@ uv run pytest tests/test_services/test_discovery*.py -v
 
 ---
 
-## Phase 4: Vector Integration (IN PROGRESS)
+## Phase 4: Vector Integration ✓
 
-**Status**: IN PROGRESS | Phases 4.1-4.4 complete
+**Status**: COMPLETE | All sub-phases (4.1-4.5) complete
 
 #### 4.1 Trade Embeddings ✓
 - [x] Created `src/services/embeddings/trade_embedding.py`
@@ -885,6 +885,61 @@ results = await picker.pick(context={...})
 ```bash
 # Run LLM picker vector integration tests
 uv run pytest tests/test_services/test_discovery_pickers.py::TestLLMPicker::test_llm_picker_vector_integration_* -v
+```
+
+#### 4.5 Validator Vector Integration ✓
+- [x] Query similar failed setups from `TradeEmbedding`
+- [x] Add warning to Validator if similar setup failed
+- [x] Test pattern detection
+
+**Files Modified**:
+- `src/agents/validator.py` - Added vector similarity integration
+- `src/workflows/graph.py` - Added context variable for db_session passing
+- `src/workflows/runner.py` - Set db_session in context before workflow execution
+- `tests/test_agents/test_validator.py` - Created comprehensive test suite
+
+**Features**:
+- **Similarity Search**: Queries `TradeEmbedding` for similar trade setups using vector similarity
+- **Failure Detection**: Filters to only count LOSS trades (not WIN trades)
+- **Context Matching**: Builds signal context text matching trade embedding format for accurate similarity search
+- **Prompt Warnings**: Includes similar failed setups in LLM prompt with clear warnings
+- **Failure Count**: Sets `similar_setup_failures` count in Validation (used by LLM for decision)
+- **Graceful Degradation**: Continues working if similarity search fails or no `db_session` is provided (backward compatible)
+- **Context Variable**: Uses `contextvars` to pass `db_session` through LangGraph workflow
+
+**How It Works**:
+1. When Validator runs with a `db_session`, it queries similar failed trade setups for each signal
+2. Builds signal context text matching the trade embedding format (symbol, action, technical indicators, risk score)
+3. Vector similarity search finds top 5 similar trades (cosine similarity > 0.7)
+4. Filters results to only LOSS trades (outcome == "LOSS")
+5. Includes similar failures in the LLM prompt with warnings:
+   ```
+   ⚠️  SIMILAR FAILED SETUPS FOUND: 2
+   These are past trades with similar setups that resulted in LOSS:
+     1. Symbol: AAPL | Action: BUY | RSI: 65.0 | SMA_20: $150.0...
+     2. Symbol: AAPL | Action: BUY | RSI: 68.0 | SMA_20: $152.0...
+   WARNING: 2 similar setup(s) failed in the past.
+   ```
+6. LLM uses this information to set `similar_setup_failures` count
+7. If `similar_setup_failures > 2`, the prompt instructs rejection
+
+**Context Variable Pattern**:
+- `TradingCycleRunner` sets `_db_session_context` before invoking workflow
+- `validator_node()` retrieves `db_session` from context variable
+- Allows passing database session through LangGraph without modifying state schema
+
+**Usage**:
+```python
+# Validator automatically uses db_session from context when available
+runner = TradingCycleRunner(db_session=session)
+result = await runner.run_scheduled_cycle(["AAPL", "MSFT"])
+# Validator will query similar failures automatically
+```
+
+**Testing**:
+```bash
+# Run validator tests (includes vector integration)
+uv run pytest tests/test_agents/test_validator.py -v
 ```
 
 ---
@@ -1143,11 +1198,11 @@ Files to create:
 ### 7. Alert System
 
 **Current**: Logs only
-**Needed**: Discord/email alerts for key events
+**Needed**: Telegram/email alerts for key events
 
 ```
 Files to create:
-- src/services/alerts/discord.py
+- src/services/alerts/telegram.py
 - src/services/alerts/email.py (AWS SES)
 
 Trigger alerts on:
@@ -1233,4 +1288,4 @@ Current: **165+ tests passing** (includes discovery, embeddings, vector integrat
 
 ---
 
-*Last updated: 2026-02-04 (Phase 4.4: LLMPicker Vector Integration complete)*
+*Last updated: 2026-02-04 (Phase 4.5: Validator Vector Integration complete)*

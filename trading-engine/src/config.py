@@ -133,7 +133,8 @@ class LoggingSettings(BaseSettings):
 class AlertSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ALERT_")
 
-    discord_webhook_url: str = ""
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
     email_enabled: bool = False
     email_from: str = ""
     email_to: str = ""

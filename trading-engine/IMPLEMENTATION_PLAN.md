@@ -118,10 +118,10 @@
 - [x] Include similar conditions in LLM prompt
 - [x] Test context enrichment
 
-### 4.5 Validator Vector Integration
-- [ ] Query similar failed setups from `TradeEmbedding`
-- [ ] Add warning to Validator if similar setup failed
-- [ ] Test pattern detection
+### 4.5 Validator Vector Integration ✓
+- [x] Query similar failed setups from `TradeEmbedding`
+- [x] Add warning to Validator if similar setup failed
+- [x] Test pattern detection
 
 ---
 
@@ -171,12 +171,12 @@
 
 ## Phase 7: Alert System
 
-### 7.1 Discord Integration
+### 7.1 Telegram Integration
 - [ ] Create `src/services/alerts/__init__.py`
-- [ ] Create `src/services/alerts/discord.py`
-- [ ] Implement webhook client
+- [ ] Create `src/services/alerts/telegram.py`
+- [ ] Implement Telegram bot client
 - [ ] Create alert templates
-- [ ] Test webhook delivery
+- [ ] Test message delivery
 
 ### 7.2 Email Integration
 - [ ] Create `src/services/alerts/email.py`
@@ -186,7 +186,7 @@
 
 ### 7.3 Alert Service
 - [ ] Create `src/services/alerts/service.py`
-- [ ] Implement alert routing (Discord vs Email)
+- [ ] Implement alert routing (Telegram vs Email)
 - [ ] Add alert triggers:
   - Circuit breaker activation
   - Large position changes
