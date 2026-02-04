@@ -26,6 +26,8 @@ dependencies = [
     "apscheduler>=3.10.0",
     "pytz>=2024.1",
     "pgvector>=0.3.0",
+    "sentence-transformers>=2.2.0",
+    "torch>=2.0.0",
 ]
 
 [project.optional-dependencies]

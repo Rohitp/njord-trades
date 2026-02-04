@@ -421,7 +421,7 @@ uv run pytest tests/test_database/test_pgvector.py -v
 
 **Files Modified**:
 - `src/database/models.py` - Added 3 embedding models with Vector(384) columns
-- `alembic/versions/XXXXX_add_embedding_tables.py` - Migration placeholder (needs revision ID)
+- `alembic/versions/7da48d279115_add_embedding_tables.py` - Migration for embedding tables
 - `tests/test_database/test_embedding_models.py` - Created unit tests
 
 **Model Details**:
@@ -435,10 +435,38 @@ uv run pytest tests/test_database/test_pgvector.py -v
 uv run pytest tests/test_database/test_embedding_models.py -v
 ```
 
-**Next Steps**:
-1. Generate migration: `uv run alembic revision -m "add embedding tables"`
-2. Update placeholder file with proper revision ID
-3. Run migration: `make migrate-exec`
+
+#### 1.3 Embedding Service ✓
+- [x] Added `sentence-transformers>=2.2.0` and `torch>=2.0.0` to `pyproject.toml`
+- [x] Added `EmbeddingSettings` to `src/config.py`
+- [x] Created `src/services/embeddings/__init__.py`
+- [x] Created `src/services/embeddings/providers/__init__.py`
+- [x] Created `src/services/embeddings/providers/bge.py` (BGE-small-en provider)
+- [x] Created `src/services/embeddings/service.py` (EmbeddingService)
+- [x] Created unit tests (`tests/test_services/test_embeddings.py`)
+
+**Files Created**:
+- `src/services/embeddings/__init__.py` - Module exports
+- `src/services/embeddings/providers/__init__.py` - Provider exports
+- `src/services/embeddings/providers/bge.py` - BGE-small-en provider (384-dim, local, free)
+- `src/services/embeddings/service.py` - EmbeddingService orchestrator
+- `tests/test_services/test_embeddings.py` - Unit tests
+
+**Files Modified**:
+- `pyproject.toml` - Added sentence-transformers and torch dependencies
+- `src/config.py` - Added EmbeddingSettings
+
+**Features**:
+- BGE-small-en provider: 384-dimensional embeddings, runs locally, free
+- Async embedding generation (non-blocking)
+- Batch embedding support (more efficient)
+- Normalized embeddings for cosine similarity search
+
+**Testing**:
+```bash
+# Run embedding service tests
+uv run pytest tests/test_services/test_embeddings.py -v
+```
 
 ---
 

@@ -140,6 +140,14 @@ class AlertSettings(BaseSettings):
     aws_region: str = "us-east-1"
 
 
+class EmbeddingSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="EMBEDDING_")
+
+    provider: str = Field(default="bge-small", description="bge-small|openai|sentence-transformers")
+    model_name: str = Field(default="BAAI/bge-small-en-v1.5", description="Model name (for local providers)")
+    dimensions: int = Field(default=384, description="Embedding dimensions (384 for BGE-small)")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -156,6 +164,7 @@ class Settings(BaseSettings):
     scheduling: SchedulingSettings = Field(default_factory=SchedulingSettings)
     event_monitor: EventMonitorSettings = Field(default_factory=EventMonitorSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
 
 
 settings = Settings()
