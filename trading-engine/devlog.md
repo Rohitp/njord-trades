@@ -412,6 +412,34 @@ GET  /api/scheduler/market-status    # Market open status
 uv run pytest tests/test_database/test_pgvector.py -v
 ```
 
+#### 1.2 Embedding Models ✓
+- [x] Added `TradeEmbedding` model to `src/database/models.py`
+- [x] Added `MarketConditionEmbedding` model
+- [x] Added `SymbolContextEmbedding` model
+- [x] Created unit tests for embedding models (`tests/test_database/test_embedding_models.py`)
+- [x] Created Alembic migration for embedding tables (`7da48d279115_add_embedding_tables.py`)
+
+**Files Modified**:
+- `src/database/models.py` - Added 3 embedding models with Vector(384) columns
+- `alembic/versions/XXXXX_add_embedding_tables.py` - Migration placeholder (needs revision ID)
+- `tests/test_database/test_embedding_models.py` - Created unit tests
+
+**Model Details**:
+- `TradeEmbedding`: Stores embeddings for completed trades (384-dim, linked to trades.id)
+- `MarketConditionEmbedding`: Stores embeddings for market conditions (384-dim, with condition_metadata JSONB)
+- `SymbolContextEmbedding`: Stores embeddings for symbol context (384-dim, with context_type and source_url)
+
+**Testing**:
+```bash
+# Run embedding model tests
+uv run pytest tests/test_database/test_embedding_models.py -v
+```
+
+**Next Steps**:
+1. Generate migration: `uv run alembic revision -m "add embedding tables"`
+2. Update placeholder file with proper revision ID
+3. Run migration: `make migrate-exec`
+
 ---
 
 ## TODO: Symbol Discovery System
