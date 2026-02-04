@@ -104,19 +104,19 @@ class TestGraphExecution:
         )
 
         # Mock each agent to add its output
-        async def mock_data_run(state):
+        async def mock_data_run(state, **kwargs):
             state.signals.append(signal)
             return state
 
-        async def mock_risk_run(state):
+        async def mock_risk_run(state, **kwargs):
             state.risk_assessments.append(assessment)
             return state
 
-        async def mock_validator_run(state):
+        async def mock_validator_run(state, **kwargs):
             state.validations.append(validation)
             return state
 
-        async def mock_meta_run(state):
+        async def mock_meta_run(state, **kwargs):
             state.final_decisions.append(decision)
             return state
 

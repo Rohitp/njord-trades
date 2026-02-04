@@ -193,8 +193,10 @@ class DataAgent(BaseAgent):
 
             if quote:
                 lines.append(f"  Price: ${quote.price:.2f}")
-                lines.append(f"  Bid: ${quote.bid:.2f} / Ask: ${quote.ask:.2f}")
-                lines.append(f"  Volume: {quote.volume:,}")
+                if quote.bid is not None and quote.ask is not None:
+                    lines.append(f"  Bid: ${quote.bid:.2f} / Ask: ${quote.ask:.2f}")
+                if quote.volume is not None:
+                    lines.append(f"  Volume: {quote.volume:,}")
 
             if indicators:
                 lines.append(f"  SMA_20: {indicators.sma_20 or 'N/A'}")

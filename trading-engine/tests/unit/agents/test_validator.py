@@ -147,10 +147,8 @@ class TestValidatorVectorIntegration:
             )
             mock_service_class.return_value = mock_service
 
-            with patch.object(validator, "_call_llm") as mock_llm:
-                mock_response = MagicMock()
-                mock_response.content = f'[{{"signal_id": "{signal.id}", "approved": false, "concerns": ["Similar setup failed"], "similar_setup_failures": 2}}]'
-                mock_llm.return_value = mock_response
+            with patch.object(validator, "_call_llm", new_callable=AsyncMock) as mock_llm:
+                mock_llm.return_value = f'[{{"signal_id": "{signal.id}", "approved": false, "concerns": ["Similar setup failed"], "similar_setup_failures": 2}}]'
 
                 result = await validator.run(state, db_session=mock_session)
 
@@ -228,10 +226,8 @@ class TestValidatorVectorIntegration:
             )
             mock_service_class.return_value = mock_service
 
-            with patch.object(validator, "_call_llm") as mock_llm:
-                mock_response = MagicMock()
-                mock_response.content = f'[{{"signal_id": "{signal.id}", "approved": true, "similar_setup_failures": 1}}]'
-                mock_llm.return_value = mock_response
+            with patch.object(validator, "_call_llm", new_callable=AsyncMock) as mock_llm:
+                mock_llm.return_value = f'[{{"signal_id": "{signal.id}", "approved": true, "similar_setup_failures": 1}}]'
 
                 result = await validator.run(state, db_session=mock_session)
 
@@ -261,10 +257,8 @@ class TestValidatorVectorIntegration:
         state.signals.append(signal)
         state.risk_assessments.append(assessment)
 
-        with patch.object(validator, "_call_llm") as mock_llm:
-            mock_response = MagicMock()
-            mock_response.content = f'[{{"signal_id": "{signal.id}", "approved": true, "similar_setup_failures": 0}}]'
-            mock_llm.return_value = mock_response
+        with patch.object(validator, "_call_llm", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = f'[{{"signal_id": "{signal.id}", "approved": true, "similar_setup_failures": 0}}]'
 
             result = await validator.run(state)  # No db_session
 
@@ -301,10 +295,8 @@ class TestValidatorVectorIntegration:
             mock_service.find_similar_trades = AsyncMock(side_effect=Exception("DB error"))
             mock_service_class.return_value = mock_service
 
-            with patch.object(validator, "_call_llm") as mock_llm:
-                mock_response = MagicMock()
-                mock_response.content = f'[{{"signal_id": "{signal.id}", "approved": true, "similar_setup_failures": 0}}]'
-                mock_llm.return_value = mock_response
+            with patch.object(validator, "_call_llm", new_callable=AsyncMock) as mock_llm:
+                mock_llm.return_value = f'[{{"signal_id": "{signal.id}", "approved": true, "similar_setup_failures": 0}}]'
 
                 result = await validator.run(state, db_session=mock_session)
 
@@ -346,6 +338,6 @@ class TestValidatorVectorIntegration:
         assert "RSI: 65.0" in context_text
         assert "SMA_20: $150.0" in context_text
         assert "SMA_50: $145.0" in context_text
-        assert "Volume ratio: 1.5x" in context_text
+        assert "Volume ratio: 1.50x" in context_text
         assert "Risk score: 0.3" in context_text
 
