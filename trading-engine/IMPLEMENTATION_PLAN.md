@@ -81,12 +81,12 @@
 - [x] Handle LLM errors gracefully
 - [x] Test with various market conditions
 
-### 3.4 EnsembleCombiner
-- [ ] Create `src/services/discovery/ensemble.py`
-- [ ] Implement weighted merge of picker results
-- [ ] Implement deduplication logic
-- [ ] Implement ranking algorithm
-- [ ] Test ensemble output quality
+### 3.4 EnsembleCombiner ✓
+- [x] Create `src/services/discovery/ensemble.py`
+- [x] Implement weighted merge of picker results
+- [x] Implement deduplication logic
+- [x] Implement ranking algorithm
+- [x] Test ensemble output quality
 
 ---
 

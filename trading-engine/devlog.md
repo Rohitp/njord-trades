@@ -655,6 +655,54 @@ uv run pytest tests/test_services/test_discovery_pickers.py -v
 uv run pytest tests/test_services/test_discovery_pickers.py -v
 ```
 
+#### 3.4 EnsembleCombiner ✓
+- [x] Created `src/services/discovery/ensemble.py`
+- [x] Implemented weighted merge of picker results
+- [x] Implemented deduplication logic
+- [x] Implemented ranking algorithm
+- [x] Created unit tests
+
+**Files Created**:
+- `src/services/discovery/ensemble.py` - EnsembleCombiner implementation
+- `tests/test_services/test_discovery_ensemble.py` - Unit tests
+
+**Files Modified**:
+- `src/services/discovery/__init__.py` - Export EnsembleCombiner
+
+**Features**:
+- **Weighted Voting**: Combines scores from multiple pickers using configurable weights
+- **Deduplication**: Merges same symbol from multiple pickers into single result
+- **Weighted Average**: Composite score = sum(score * weight) / sum(weights)
+- **Reason Combination**: Combines reasons from all pickers that found the symbol
+- **Metadata Merging**: Preserves picker-specific metadata and tracks which pickers found each symbol
+- **Ranking**: Returns results sorted by composite score (highest first)
+- **Case Normalization**: Handles symbol case differences (AAPL vs aapl)
+
+**Weight Configuration**:
+- Default weights: metric 30%, fuzzy 40%, llm 30% (from `settings.discovery`)
+- Weights are automatically normalized to sum to 1.0
+- Configurable via constructor or config file
+
+**Usage Example**:
+```python
+combiner = EnsembleCombiner()
+results = combiner.combine(
+    metric_results=metric_picker.pick(),
+    fuzzy_results=fuzzy_picker.pick(),
+    llm_results=llm_picker.pick(),
+)
+# Returns deduplicated, ranked list of symbols
+```
+
+**Testing**:
+```bash
+# Run ensemble tests
+uv run pytest tests/test_services/test_discovery_ensemble.py -v
+
+# Run all discovery tests
+uv run pytest tests/test_services/test_discovery*.py -v
+```
+
 ---
 
 ## TODO: Symbol Discovery System

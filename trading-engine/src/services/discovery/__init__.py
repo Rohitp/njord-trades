@@ -1,4 +1,6 @@
 """Symbol discovery service for dynamic watchlist management."""
 
-__all__ = []
+from src.services.discovery.ensemble import EnsembleCombiner
+
+__all__ = ["EnsembleCombiner"]
 
