@@ -2,9 +2,14 @@
 Tests for embedding service.
 
 Tests BGE-small-en provider and EmbeddingService.
+
+Note: Tests that actually download models are marked @pytest.mark.slow
+and should be run separately. Fast tests use mocks.
 """
 
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+import numpy as np
 
 from src.services.embeddings.providers.bge import BGESmallProvider
 from src.services.embeddings.service import EmbeddingService
@@ -14,6 +19,7 @@ class TestBGESmallProvider:
     """Tests for BGE-small-en provider."""
 
     @pytest.mark.asyncio
+    @pytest.mark.slow
     async def test_embed_single_text(self):
         """Test embedding a single text."""
         provider = BGESmallProvider()
@@ -26,6 +32,7 @@ class TestBGESmallProvider:
         assert all(isinstance(x, float) for x in embedding)
 
     @pytest.mark.asyncio
+    @pytest.mark.slow
     async def test_embed_batch(self):
         """Test embedding multiple texts."""
         provider = BGESmallProvider()
@@ -41,6 +48,7 @@ class TestBGESmallProvider:
         assert all(isinstance(x, float) for emb in embeddings for x in emb)
 
     @pytest.mark.asyncio
+    @pytest.mark.slow
     async def test_embed_similarity(self):
         """Test that similar texts produce similar embeddings."""
         provider = BGESmallProvider()
@@ -65,11 +73,46 @@ class TestBGESmallProvider:
         provider = BGESmallProvider()
         assert provider.get_dimensions() == 384
 
+    @pytest.mark.asyncio
+    async def test_embed_mocked(self):
+        """Test embedding with mocked SentenceTransformer (fast, no download)."""
+        mock_embedding = np.random.rand(384).astype(np.float32)
+        
+        with patch("src.services.embeddings.providers.bge.SentenceTransformer") as mock_st:
+            mock_model = MagicMock()
+            mock_model.encode.return_value = mock_embedding
+            mock_st.return_value = mock_model
+            
+            provider = BGESmallProvider()
+            result = await provider.embed("test text")
+            
+            assert len(result) == 384
+            assert all(isinstance(x, float) for x in result)
+            mock_model.encode.assert_called_once_with("test text", normalize_embeddings=True, show_progress_bar=False)
+
+    @pytest.mark.asyncio
+    async def test_embed_batch_mocked(self):
+        """Test batch embedding with mocked SentenceTransformer (fast, no download)."""
+        mock_embeddings = np.random.rand(2, 384).astype(np.float32)
+        
+        with patch("src.services.embeddings.providers.bge.SentenceTransformer") as mock_st:
+            mock_model = MagicMock()
+            mock_model.encode.return_value = mock_embeddings
+            mock_st.return_value = mock_model
+            
+            provider = BGESmallProvider()
+            texts = ["text1", "text2"]
+            results = await provider.embed_batch(texts)
+            
+            assert len(results) == 2
+            assert all(len(emb) == 384 for emb in results)
+
 
 class TestEmbeddingService:
     """Tests for EmbeddingService."""
 
     @pytest.mark.asyncio
+    @pytest.mark.slow
     async def test_embed_text(self):
         """Test embedding via service."""
         service = EmbeddingService(provider="bge-small")
@@ -81,6 +124,7 @@ class TestEmbeddingService:
         assert service.get_dimensions() == 384
 
     @pytest.mark.asyncio
+    @pytest.mark.slow
     async def test_embed_batch(self):
         """Test batch embedding via service."""
         service = EmbeddingService(provider="bge-small")

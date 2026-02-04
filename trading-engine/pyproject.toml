@@ -26,8 +26,6 @@ dependencies = [
     "apscheduler>=3.10.0",
     "pytz>=2024.1",
     "pgvector>=0.3.0",
-    "sentence-transformers>=2.2.0",
-    "torch>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +34,10 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
     "ruff>=0.8.0",
+]
+embedding = [
+    "sentence-transformers>=2.2.0",
+    "torch>=2.0.0",
 ]
 
 [build-system]
@@ -52,6 +54,9 @@ select = ["E", "F", "I", "N", "W"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

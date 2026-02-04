@@ -453,7 +453,7 @@ uv run pytest tests/test_database/test_embedding_models.py -v
 - `tests/test_services/test_embeddings.py` - Unit tests
 
 **Files Modified**:
-- `pyproject.toml` - Added sentence-transformers and torch dependencies
+- `pyproject.toml` - Added sentence-transformers and torch to optional dependencies
 - `src/config.py` - Added EmbeddingSettings
 
 **Features**:
@@ -464,9 +464,18 @@ uv run pytest tests/test_database/test_embedding_models.py -v
 
 **Testing**:
 ```bash
-# Run embedding service tests
+# Run embedding service tests (fast, mocked)
+uv run pytest tests/test_services/test_embeddings.py -v -m "not slow"
+
+# Run all tests including slow ones (downloads models)
 uv run pytest tests/test_services/test_embeddings.py -v
 ```
+
+**Recent Fixes**:
+- Moved `sentence-transformers` and `torch` to optional dependencies (`[project.optional-dependencies.embedding]`)
+- Marked slow tests with `@pytest.mark.slow` (downloads 100MB+ models)
+- Added mocked tests for fast CI runs (no downloads, no internet required)
+- Added ImportError handling in BGESmallProvider for missing dependencies
 
 ---
 
@@ -560,6 +569,48 @@ uv run pytest tests/test_services/test_embeddings.py -v
 **Testing**:
 ```bash
 # Run picker tests
+uv run pytest tests/test_services/test_discovery_pickers.py -v
+```
+
+**Recent Fixes**:
+- Fixed ZeroDivisionError in spread calculation (guard for price == 0)
+- Added debug logging for failed filters (volume/spread) to aid diagnostics
+- Empty migration file deleted (6feb8af8ee03) - tables already in 397ca6a8afc7
+
+#### 3.2 FuzzyPicker ✓
+- [x] Created `src/services/discovery/pickers/fuzzy.py`
+- [x] Implemented liquidity score (volume vs average volume)
+- [x] Implemented volatility score (RSI-based, moderate preferred)
+- [x] Implemented momentum score (price vs SMA, positive momentum preferred)
+- [x] Implemented sector balance score (placeholder - requires sector data)
+- [x] Weighted combination of scores (configurable weights)
+- [x] Created unit tests
+
+**Files Created**:
+- `src/services/discovery/pickers/fuzzy.py` - FuzzyPicker implementation
+
+**Files Modified**:
+- `src/services/discovery/pickers/__init__.py` - Export FuzzyPicker
+- `tests/test_services/test_discovery_pickers.py` - Added FuzzyPicker tests
+
+**Features**:
+- **Liquidity Score**: Higher volume relative to 20-day average = higher score
+- **Volatility Score**: RSI 30-70 range preferred (moderate volatility)
+- **Momentum Score**: Price above SMA preferred, but not extreme moves
+- **Sector Balance**: Placeholder (requires sector data from Alpaca fundamentals API)
+- **Weighted Composite**: Configurable weights (default: liquidity 30%, volatility 25%, momentum 35%, sector 10%)
+- **Min Threshold**: Only returns symbols above minimum score (default: 0.3)
+- **Sorted Results**: Returns ranked list (highest score first)
+
+**Scoring Logic**:
+- Uses `scoring.py` utilities: `liquidity_score()`, `volatility_score()`, `momentum_score()`
+- Weights are automatically normalized to sum to 1.0
+- Composite score = weighted sum of all factor scores
+- Results filtered by `min_score_threshold` and sorted by score
+
+**Testing**:
+```bash
+# Run picker tests (includes FuzzyPicker)
 uv run pytest tests/test_services/test_discovery_pickers.py -v
 ```
 

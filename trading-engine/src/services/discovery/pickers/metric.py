@@ -116,12 +116,14 @@ class MetricPicker(SymbolPicker):
             
             # Volume filter
             if quote.volume is None or quote.volume < self.min_volume:
+                log.debug("metric_picker_volume_failed", symbol=symbol, volume=quote.volume, threshold=self.min_volume)
                 return False
 
-            # Spread filter (if bid/ask available)
-            if quote.bid and quote.ask and quote.price:
+            # Spread filter (if bid/ask available and price is valid)
+            if quote.bid and quote.ask and quote.price and quote.price > 0:
                 spread_pct = abs(quote.ask - quote.bid) / quote.price
                 if spread_pct > self.max_spread_pct:
+                    log.debug("metric_picker_spread_failed", symbol=symbol, spread_pct=spread_pct, threshold=self.max_spread_pct)
                     return False
 
             # Market cap and beta would require additional API calls

@@ -3,12 +3,17 @@ BGE-small-en embedding provider (free, local).
 
 Uses sentence-transformers to run BGE-small-en locally.
 384-dimensional embeddings optimized for semantic search.
+
+Requires optional dependency: uv sync --extra embedding
 """
 
 import asyncio
 from typing import List
 
-from sentence_transformers import SentenceTransformer
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    SentenceTransformer = None  # type: ignore
 
 from src.config import settings
 from src.utils.logging import get_logger
@@ -38,6 +43,10 @@ class BGESmallProvider:
     @property
     def model(self) -> SentenceTransformer:
         """Lazy load the model (loads on first use)."""
+        if SentenceTransformer is None:
+            raise ImportError(
+                "sentence-transformers not installed. Install with: uv sync --extra embedding"
+            )
         if self._model is None:
             log.info("loading_bge_model", model_name=self.model_name)
             self._model = SentenceTransformer(self.model_name)

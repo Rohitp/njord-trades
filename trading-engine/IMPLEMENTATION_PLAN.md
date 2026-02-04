@@ -1,71 +1,77 @@
 # Implementation Plan
 
-## Phase 1: pgvector Foundation
+## Phase 1: pgvector Foundation ✓
 
-### 1.1 Docker & Database Setup
-- [ ] Update `docker-compose.yml` to use `pgvector/pgvector:pg15` image
-- [ ] Create Alembic migration to enable `vector` extension
-- [ ] Test extension is enabled: `SELECT * FROM pg_extension WHERE extname = 'vector';`
+**Status**: COMPLETE | See devlog.md "Phase 1: pgvector Foundation" section
 
-### 1.2 Embedding Models
-- [ ] Add `TradeEmbedding` model to `src/database/models.py`
-- [ ] Add `MarketConditionEmbedding` model
-- [ ] Add `SymbolContextEmbedding` model
-- [ ] Create Alembic migration for embedding tables
-- [ ] Add GIN indexes for similarity search
+### 1.1 Docker & Database Setup ✓
+- [x] Update `docker-compose.yml` to use `pgvector/pgvector:pg15` image
+- [x] Create Alembic migration to enable `vector` extension
+- [x] Test extension is enabled: `SELECT * FROM pg_extension WHERE extname = 'vector';`
 
-### 1.3 Embedding Service
-- [ ] Create `src/services/embeddings/__init__.py`
-- [ ] Create `src/services/embeddings/service.py` (EmbeddingService)
-- [ ] Create `src/services/embeddings/providers/__init__.py`
-- [ ] Create `src/services/embeddings/providers/bge.py` (BGE-small-en provider)
-- [ ] Add `EmbeddingSettings` to `src/config.py`
-- [ ] Add `sentence-transformers>=2.2.0` and `torch>=2.0.0` to `pyproject.toml`
-- [ ] Test embedding generation and similarity search
+### 1.2 Embedding Models ✓
+- [x] Add `TradeEmbedding` model to `src/database/models.py`
+- [x] Add `MarketConditionEmbedding` model
+- [x] Add `SymbolContextEmbedding` model
+- [x] Create Alembic migration for embedding tables
+- [x] Add GIN indexes for similarity search
 
----
-
-## Phase 2: Symbol Discovery Foundation
-
-### 2.1 Base Protocols
-- [ ] Create `src/services/discovery/__init__.py`
-- [ ] Create `src/services/discovery/pickers/base.py` (SymbolPicker protocol, PickerResult dataclass)
-- [ ] Create `src/services/discovery/scoring.py` (shared scoring utilities)
-
-### 2.2 Database Models
-- [ ] Add `DiscoveredSymbol` model to `src/database/models.py`
-- [ ] Add `Watchlist` model
-- [ ] Add `PickerSuggestion` model
-- [ ] Create Alembic migration for discovery tables
-
-### 2.3 Configuration
-- [ ] Add `DiscoverySettings` to `src/config.py`
-- [ ] Add discovery weights, picker config, interval settings
-
-### 2.4 Data Sources
-- [ ] Create `src/services/discovery/sources/__init__.py`
-- [ ] Create `src/services/discovery/sources/alpaca.py` (Alpaca assets API)
+### 1.3 Embedding Service ✓
+- [x] Create `src/services/embeddings/__init__.py`
+- [x] Create `src/services/embeddings/service.py` (EmbeddingService)
+- [x] Create `src/services/embeddings/providers/__init__.py`
+- [x] Create `src/services/embeddings/providers/bge.py` (BGE-small-en provider)
+- [x] Add `EmbeddingSettings` to `src/config.py`
+- [x] Add `sentence-transformers>=2.2.0` and `torch>=2.0.0` to optional dependencies
+- [x] Test embedding generation and similarity search
 
 ---
 
-## Phase 3: Pickers Implementation
+## Phase 2: Symbol Discovery Foundation ✓
 
-### 3.1 MetricPicker
-- [ ] Create `src/services/discovery/pickers/metric.py`
-- [ ] Implement volume filter (min volume threshold)
-- [ ] Implement spread filter (max spread threshold)
-- [ ] Implement market cap filter (min/max range)
-- [ ] Implement beta filter (volatility range)
-- [ ] Test with real symbols
+**Status**: COMPLETE | See devlog.md "Phase 2: Symbol Discovery Foundation" section
 
-### 3.2 FuzzyPicker
-- [ ] Create `src/services/discovery/pickers/fuzzy.py`
-- [ ] Implement liquidity score (0-1 scale)
-- [ ] Implement volatility score
-- [ ] Implement momentum score
-- [ ] Implement sector balance score
-- [ ] Weighted combination of scores
-- [ ] Test scoring logic
+### 2.1 Base Protocols ✓
+- [x] Create `src/services/discovery/__init__.py`
+- [x] Create `src/services/discovery/pickers/base.py` (SymbolPicker protocol, PickerResult dataclass)
+- [x] Create `src/services/discovery/scoring.py` (shared scoring utilities)
+
+### 2.2 Database Models ✓
+- [x] Add `DiscoveredSymbol` model to `src/database/models.py`
+- [x] Add `Watchlist` model
+- [x] Add `PickerSuggestion` model
+- [x] Create Alembic migration for discovery tables
+
+### 2.3 Configuration ✓
+- [x] Add `DiscoverySettings` to `src/config.py`
+- [x] Add discovery weights, picker config, interval settings
+
+### 2.4 Data Sources ✓
+- [x] Create `src/services/discovery/sources/__init__.py`
+- [x] Create `src/services/discovery/sources/alpaca.py` (Alpaca assets API)
+
+---
+
+## Phase 3: Pickers Implementation (IN PROGRESS)
+
+**Status**: IN PROGRESS | See devlog.md "Phase 3: Pickers Implementation" section
+
+### 3.1 MetricPicker ✓
+- [x] Create `src/services/discovery/pickers/metric.py`
+- [x] Implement volume filter (min volume threshold)
+- [x] Implement spread filter (max spread threshold)
+- [ ] Implement market cap filter (min/max range) - Placeholder (requires Alpaca fundamentals API)
+- [ ] Implement beta filter (volatility range) - Placeholder (requires Alpaca fundamentals API)
+- [x] Test with real symbols
+
+### 3.2 FuzzyPicker ✓
+- [x] Create `src/services/discovery/pickers/fuzzy.py`
+- [x] Implement liquidity score (0-1 scale)
+- [x] Implement volatility score
+- [x] Implement momentum score
+- [ ] Implement sector balance score - Placeholder (requires Alpaca fundamentals API)
+- [x] Weighted combination of scores
+- [x] Test scoring logic
 
 ### 3.3 LLMPicker
 - [ ] Create `src/services/discovery/pickers/llm.py`
