@@ -5,13 +5,13 @@ Takes EXECUTE decisions from the MetaAgent and submits orders to the broker.
 """
 
 from datetime import datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
-from src.database.models import CapitalEvent, CapitalEventType, Position as DBPosition, PortfolioState, Trade, TradeAction, TradeStatus
+from src.database.models import CapitalEvent, CapitalEventType, Event, Position as DBPosition, PortfolioState, Trade, TradeAction, TradeStatus
 from src.services.execution.broker import Broker, OrderSide, OrderStatus, OrderType
 from src.utils.logging import get_logger
 from src.utils.metrics import execute_decisions as execute_decisions_counter
@@ -162,13 +162,24 @@ class ExecutionService:
         if order_result.filled_price is not None and signal.price > 0:
             slippage = (order_result.filled_price - signal.price) / signal.price
 
+        # Handle partial fills
+        filled_quantity = order_result.filled_quantity or decision.final_quantity
+        if filled_quantity < decision.final_quantity:
+            log.warning(
+                "partial_fill",
+                requested=decision.final_quantity,
+                filled=filled_quantity,
+                symbol=signal.symbol,
+                broker_order_id=order_result.broker_order_id,
+            )
+
         # Build execution result
         execution_result = ExecutionResult(
             signal_id=signal.id,
             success=order_result.success and order_result.is_filled,
             symbol=signal.symbol,
             action=signal.action.value,
-            quantity=decision.final_quantity,
+            quantity=filled_quantity,  # Use actual filled quantity
             requested_price=signal.price,
             fill_price=order_result.filled_price,
             slippage=slippage,
@@ -191,9 +202,22 @@ class ExecutionService:
 
         # Persist to database if session available
         if self.db_session is not None and execution_result.success:
-            execution_result.trade_id = await self._persist_trade(
-                state, signal, decision, execution_result
-            )
+            try:
+                execution_result.trade_id = await self._persist_trade(
+                    state, signal, decision, execution_result
+                )
+            except Exception as e:
+                # Log orphaned order if broker succeeded but DB failed
+                if execution_result.broker_order_id:
+                    log.error(
+                        "orphaned_broker_order",
+                        broker_order_id=execution_result.broker_order_id,
+                        symbol=signal.symbol,
+                        error=str(e),
+                        message="Broker order succeeded but DB write failed - order may be orphaned",
+                    )
+                # Re-raise to let caller handle
+                raise
 
         return execution_result
 
@@ -203,7 +227,7 @@ class ExecutionService:
         signal: Signal,
         decision: FinalDecision,
         result: ExecutionResult,
-    ) -> str | None:
+    ) -> UUID | None:
         """
         Persist trade to database.
 
@@ -246,11 +270,48 @@ class ExecutionService:
             )
             self.db_session.add(trade)
 
-            # Update position
-            await self._update_position(signal, result, trade_value)
+            # Update position (pass trade_id for CapitalEvent linking)
+            capital_event = await self._update_position(signal, result, trade_value, trade_id)
 
             # Update portfolio state
-            await self._update_portfolio(signal, trade_value)
+            final_portfolio_value = await self._update_portfolio(signal, trade_value)
+
+            # Update CapitalEvent.balance_after if we created one
+            if capital_event is not None and final_portfolio_value is not None:
+                capital_event.balance_after = final_portfolio_value
+
+            # Write to event log (dual-write pattern requirement)
+            validation = next(
+                (v for v in state.validations if v.signal_id == signal.id),
+                None
+            )
+
+            event = Event(
+                event_type="TradeExecuted",
+                aggregate_id=str(trade_id),
+                data={
+                    "trade_id": str(trade_id),
+                    "symbol": signal.symbol,
+                    "action": signal.action.value,
+                    "quantity": result.quantity,
+                    "fill_price": result.fill_price,
+                    "slippage": result.slippage,
+                    "signal_confidence": signal.confidence,
+                    "risk_score": risk_assessment.risk_score if risk_assessment else 0.0,
+                    "agent_reasoning": {
+                        "signal_reasoning": signal.reasoning,
+                        "risk_reasoning": risk_assessment.reasoning if risk_assessment else None,
+                        "validator_reasoning": validation.reasoning if validation else None,
+                        "meta_reasoning": decision.reasoning,
+                    },
+                },
+                event_metadata={
+                    "cycle_id": str(state.cycle_id),
+                    "broker": self.broker.name,
+                    "broker_order_id": result.broker_order_id,
+                },
+            )
+            self.db_session.add(event)
 
             await self.db_session.commit()
 
@@ -267,8 +328,14 @@ class ExecutionService:
         signal: Signal,
         result: ExecutionResult,
         trade_value: float,
-    ) -> None:
-        """Update position in database."""
+        trade_id: UUID,
+    ) -> CapitalEvent | None:
+        """
+        Update position in database.
+
+        Returns:
+            CapitalEvent if created (for SELL trades), None otherwise
+        """
         # Find existing position
         stmt = select(DBPosition).where(DBPosition.symbol == signal.symbol)
         db_result = await self.db_session.execute(stmt)
@@ -292,14 +359,22 @@ class ExecutionService:
                 # Update existing position (average up/down)
                 total_cost = (position.avg_cost * position.quantity) + trade_value
                 position.quantity += result.quantity
-                position.avg_cost = total_cost / position.quantity
+                if position.quantity > 0:  # Safety check
+                    position.avg_cost = total_cost / position.quantity
                 position.current_price = fill_price
                 position.current_value = position.quantity * fill_price
 
+            return None
+
         else:  # SELL
             if position is None:
-                log.warning("sell_without_position", symbol=signal.symbol)
-                return
+                log.error(
+                    "sell_without_position",
+                    symbol=signal.symbol,
+                    trade_id=str(trade_id),
+                    message="Cannot update position for SELL: position not found",
+                )
+                raise ValueError(f"Cannot update position for SELL: position not found for {signal.symbol}")
 
             # Calculate realized P&L
             cost_basis = position.avg_cost * result.quantity
@@ -310,8 +385,9 @@ class ExecutionService:
             capital_event = CapitalEvent(
                 event_type=event_type.value,
                 amount=abs(realized_pnl),
-                balance_after=0.0,  # Will be updated below
+                balance_after=0.0,  # Will be updated after portfolio update
                 description=f"Closed {result.quantity} shares of {signal.symbol}",
+                trade_id=trade_id,  # Link to trade
             )
             self.db_session.add(capital_event)
 
@@ -323,12 +399,19 @@ class ExecutionService:
                 position.current_price = fill_price
                 position.current_value = position.quantity * fill_price
 
+            return capital_event
+
     async def _update_portfolio(
         self,
         signal: Signal,
         trade_value: float,
-    ) -> None:
-        """Update portfolio state in database."""
+    ) -> float | None:
+        """
+        Update portfolio state in database.
+
+        Returns:
+            Final portfolio total_value after update, None if portfolio doesn't exist
+        """
         # Get portfolio state (single row)
         stmt = select(PortfolioState).where(PortfolioState.id == 1)
         db_result = await self.db_session.execute(stmt)
@@ -362,3 +445,5 @@ class ExecutionService:
         # Update peak if new high
         if portfolio.total_value > portfolio.peak_value:
             portfolio.peak_value = portfolio.total_value
+
+        return portfolio.total_value

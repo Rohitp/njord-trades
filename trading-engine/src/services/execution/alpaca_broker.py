@@ -4,6 +4,7 @@ Alpaca broker implementation for real/paper trading.
 Uses the Alpaca Trade API for order submission and management.
 """
 
+import asyncio
 from datetime import datetime
 
 from src.config import settings
@@ -17,6 +18,7 @@ from src.services.execution.broker import (
     Position,
 )
 from src.utils.logging import get_logger
+from src.utils.retry import retry_with_backoff
 
 log = get_logger(__name__)
 
@@ -82,6 +84,7 @@ class AlpacaBroker(Broker):
     def is_paper(self) -> bool:
         return self._is_paper
 
+    @retry_with_backoff()
     async def submit_order(
         self,
         symbol: str,
@@ -133,8 +136,8 @@ class AlpacaBroker(Broker):
                     limit_price=limit_price,
                 )
 
-            # Submit order (sync call - Alpaca SDK is sync)
-            order = client.submit_order(request)
+            # Submit order (wrap sync call in thread executor)
+            order = await asyncio.to_thread(client.submit_order, request)
 
             status = ALPACA_STATUS_MAP.get(order.status.value, OrderStatus.PENDING)
 
@@ -175,12 +178,13 @@ class AlpacaBroker(Broker):
                 error_message=error_msg,
             )
 
+    @retry_with_backoff()
     async def get_order_status(self, broker_order_id: str) -> OrderResult:
         """Get order status from Alpaca."""
         client = self._get_client()
 
         try:
-            order = client.get_order_by_id(broker_order_id)
+            order = await asyncio.to_thread(client.get_order_by_id, broker_order_id)
             status = ALPACA_STATUS_MAP.get(order.status.value, OrderStatus.PENDING)
 
             return OrderResult(
@@ -202,12 +206,13 @@ class AlpacaBroker(Broker):
                 error_message=str(e),
             )
 
+    @retry_with_backoff()
     async def cancel_order(self, broker_order_id: str) -> bool:
         """Cancel order on Alpaca."""
         client = self._get_client()
 
         try:
-            client.cancel_order_by_id(broker_order_id)
+            await asyncio.to_thread(client.cancel_order_by_id, broker_order_id)
             log.info("alpaca_order_cancelled", order_id=broker_order_id)
             return True
         except Exception as e:
@@ -219,7 +224,7 @@ class AlpacaBroker(Broker):
         client = self._get_client()
 
         try:
-            pos = client.get_open_position(symbol)
+            pos = await asyncio.to_thread(client.get_open_position, symbol)
             return Position(
                 symbol=pos.symbol,
                 quantity=int(pos.qty),
@@ -237,7 +242,7 @@ class AlpacaBroker(Broker):
         client = self._get_client()
 
         try:
-            positions = client.get_all_positions()
+            positions = await asyncio.to_thread(client.get_all_positions)
             return [
                 Position(
                     symbol=pos.symbol,
@@ -258,7 +263,7 @@ class AlpacaBroker(Broker):
         client = self._get_client()
 
         try:
-            account = client.get_account()
+            account = await asyncio.to_thread(client.get_account)
             return AccountInfo(
                 cash=float(account.cash),
                 portfolio_value=float(account.portfolio_value),

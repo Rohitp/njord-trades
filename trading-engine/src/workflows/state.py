@@ -18,6 +18,10 @@ from enum import Enum
 from typing import Any, Self
 from uuid import UUID, uuid4
 
+from src.utils.logging import get_logger
+
+log = get_logger(__name__)
+
 
 # =============================================================================
 # HELPERS
@@ -46,18 +50,36 @@ def _require_uuid(value: str | UUID | None, field_name: str) -> UUID:
     return UUID(value)
 
 
-def _parse_datetime(value: str | datetime | None) -> datetime:
+def _parse_datetime(value: str | datetime | None, default: datetime | None = None) -> datetime:
     """
     Convert ISO string to datetime if needed.
 
-    Defaults to now() for missing values. This is intentional for timestamps
-    that are set during object creation (not foreign references).
+    Args:
+        value: The value to parse
+        default: Default value if None. If None and value is None, raises ValueError.
+
+    Returns:
+        Parsed datetime
+
+    Raises:
+        ValueError: If value is None and default is None (required timestamp missing)
     """
     if value is None:
-        return datetime.now()
+        if default is not None:
+            return default
+        raise ValueError("Required timestamp field is missing")
     if isinstance(value, datetime):
         return value
     return datetime.fromisoformat(value)
+
+
+def _parse_datetime_optional(value: str | datetime | None) -> datetime:
+    """
+    Convert ISO string to datetime, defaulting to now() if missing.
+
+    Use for timestamps that are set during object creation (not foreign references).
+    """
+    return _parse_datetime(value, default=datetime.now())
 
 
 # =============================================================================
@@ -115,11 +137,36 @@ class Signal:
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Deserialize from dict (e.g., LangGraph output)."""
         # Handle action field: could be string, enum, or missing
-        action_raw = data.get("action", SignalAction.HOLD)
-        action = SignalAction(action_raw) if isinstance(action_raw, str) else action_raw
+        # Use data.get() with default to avoid KeyError, then validate
+        action_raw = data.get("action")
+        if action_raw is None:
+            action = SignalAction.HOLD
+        elif isinstance(action_raw, str):
+            try:
+                action = SignalAction(action_raw)
+            except ValueError:
+                # Invalid enum value, default to HOLD
+                action = SignalAction.HOLD
+        elif isinstance(action_raw, SignalAction):
+            action = action_raw
+        else:
+            # Unexpected type, default to HOLD
+            action = SignalAction.HOLD
+
+        # Signal.id is used as foreign key by RiskAssessment, Validation, etc.
+        # If missing, generate new UUID but warn - downstream objects may not match
+        signal_id = _parse_uuid(data.get("id"))
+        if signal_id is None:
+            signal_id = uuid4()
+            log.warning(
+                "signal_id_missing_generated_new",
+                signal_id=str(signal_id),
+                symbol=data.get("symbol", "unknown"),
+                message="Signal.id was missing from dict, generated new UUID. Downstream objects may not match.",
+            )
 
         return cls(
-            id=_parse_uuid(data.get("id")) or uuid4(),
+            id=signal_id,
             symbol=data.get("symbol", ""),
             action=action,
             confidence=data.get("confidence", 0.0),
@@ -131,7 +178,7 @@ class Signal:
             sma_200=data.get("sma_200"),
             rsi_14=data.get("rsi_14"),
             volume_ratio=data.get("volume_ratio"),
-            timestamp=_parse_datetime(data.get("timestamp")),
+            timestamp=_parse_datetime_optional(data.get("timestamp")),
         )
 
 
@@ -169,7 +216,7 @@ class RiskAssessment:
             hard_constraint_reason=data.get("hard_constraint_reason"),
             concerns=data.get("concerns", []),
             reasoning=data.get("reasoning", ""),
-            timestamp=_parse_datetime(data.get("timestamp")),
+            timestamp=_parse_datetime_optional(data.get("timestamp")),
         )
 
 
@@ -205,7 +252,7 @@ class Validation:
             repetition_detected=data.get("repetition_detected", False),
             sector_clustering_detected=data.get("sector_clustering_detected", False),
             similar_setup_failures=data.get("similar_setup_failures", 0),
-            timestamp=_parse_datetime(data.get("timestamp")),
+            timestamp=_parse_datetime_optional(data.get("timestamp")),
         )
 
 
@@ -231,15 +278,29 @@ class FinalDecision:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Deserialize from dict (e.g., LangGraph output)."""
-        decision_raw = data.get("decision", Decision.DO_NOT_EXECUTE)
-        decision = Decision(decision_raw) if isinstance(decision_raw, str) else decision_raw
+        # Handle decision field: could be string, enum, or missing
+        decision_raw = data.get("decision")
+        if decision_raw is None:
+            decision = Decision.DO_NOT_EXECUTE
+        elif isinstance(decision_raw, str):
+            try:
+                decision = Decision(decision_raw)
+            except ValueError:
+                # Invalid enum value, default to DO_NOT_EXECUTE
+                decision = Decision.DO_NOT_EXECUTE
+        elif isinstance(decision_raw, Decision):
+            decision = decision_raw
+        else:
+            # Unexpected type, default to DO_NOT_EXECUTE
+            decision = Decision.DO_NOT_EXECUTE
+
         return cls(
             signal_id=_require_uuid(data.get("signal_id"), "signal_id"),
             decision=decision,
             final_quantity=data.get("final_quantity", 0),
             confidence=data.get("confidence", 0.0),
             reasoning=data.get("reasoning", ""),
-            timestamp=_parse_datetime(data.get("timestamp")),
+            timestamp=_parse_datetime_optional(data.get("timestamp")),
         )
 
 
@@ -283,7 +344,7 @@ class ExecutionResult:
             slippage=data.get("slippage"),
             broker_order_id=data.get("broker_order_id"),
             error=data.get("error"),
-            timestamp=_parse_datetime(data.get("timestamp")),
+            timestamp=_parse_datetime_optional(data.get("timestamp")),
         )
 
 
@@ -453,7 +514,7 @@ class TradingState:
             cycle_id=_require_uuid(data.get("cycle_id"), "cycle_id"),
             cycle_type=data.get("cycle_type", "scheduled"),
             trigger_symbol=data.get("trigger_symbol"),
-            started_at=_parse_datetime(data.get("started_at")),
+            started_at=_parse_datetime_optional(data.get("started_at")),  # Optional - runner overwrites it
             trace_id=data.get("trace_id"),
             symbols=data.get("symbols", []),
             portfolio_snapshot=portfolio,

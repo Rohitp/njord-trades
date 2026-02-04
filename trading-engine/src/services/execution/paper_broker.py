@@ -175,7 +175,11 @@ class PaperBroker(Broker):
                 pos = self._positions[symbol]
                 total_cost = (pos.avg_entry_price * pos.quantity) + order_value
                 pos.quantity += quantity
-                pos.avg_entry_price = total_cost / pos.quantity
+                if pos.quantity > 0:  # Safety check for division by zero
+                    pos.avg_entry_price = total_cost / pos.quantity
+                else:
+                    # Should not happen, but handle edge case
+                    pos.avg_entry_price = fill_price
                 pos.market_value = pos.quantity * fill_price
             else:
                 self._positions[symbol] = Position(
