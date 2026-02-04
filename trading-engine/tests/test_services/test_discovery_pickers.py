@@ -229,15 +229,14 @@ class TestFuzzyPicker:
             assert results[0].score >= results[1].score
 
     @pytest.mark.asyncio
-    async def test_fuzzy_picker_similarity_adjustment(self):
-        """Test that similarity adjustment affects scores."""
+    async def test_fuzzy_picker_similarity_adjustment_win_trades(self):
+        """Test that WIN trades boost the score."""
         with patch("src.services.discovery.pickers.fuzzy.AlpacaAssetSource") as mock_source, \
              patch("src.services.discovery.pickers.fuzzy.MarketDataService") as mock_market, \
              patch("src.services.discovery.pickers.fuzzy.TradeEmbeddingService") as mock_embedding:
             
             mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
             
-            # Create mock quote and indicators
             quote = MagicMock()
             quote.volume = 5_000_000
             quote.price = 150.0
@@ -253,7 +252,70 @@ class TestFuzzyPicker:
             mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
             
             # Mock similarity search - return trades with WIN outcomes
-            from src.database.models import TradeEmbedding, Trade, TradeStatus
+            from uuid import uuid4
+            
+            mock_trade_embedding1 = MagicMock()
+            mock_trade_embedding1.trade_id = uuid4()
+            mock_trade_embedding2 = MagicMock()
+            mock_trade_embedding2.trade_id = uuid4()
+            
+            mock_trade1 = MagicMock()
+            mock_trade1.id = mock_trade_embedding1.trade_id
+            mock_trade1.outcome = "WIN"
+            mock_trade2 = MagicMock()
+            mock_trade2.id = mock_trade_embedding2.trade_id
+            mock_trade2.outcome = "WIN"
+            
+            mock_embedding_service = MagicMock()
+            mock_embedding_service.find_similar_trades = AsyncMock(
+                return_value=[mock_trade_embedding1, mock_trade_embedding2]
+            )
+            mock_embedding.return_value = mock_embedding_service
+            
+            mock_session = MagicMock()
+            mock_result = MagicMock()
+            mock_result.scalars.return_value.all.return_value = [mock_trade1, mock_trade2]
+            mock_session.execute = AsyncMock(return_value=mock_result)
+            
+            picker = FuzzyPicker(
+                min_score_threshold=0.0,
+                similarity_weight=0.2,  # 20% weight for similarity
+                db_session=mock_session,
+            )
+            results = await picker.pick()
+            
+            assert len(results) == 1
+            assert results[0].symbol == "AAPL"
+            # Should have similarity adjustment in metadata
+            assert "similarity_adjustment" in results[0].metadata
+            # 100% win rate should give +1.0 adjustment
+            assert results[0].metadata["similarity_adjustment"] > 0.9
+            # Score should be boosted
+            assert results[0].score > results[0].metadata.get("base_score", 0.0)
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_picker_similarity_adjustment_loss_trades(self):
+        """Test that LOSS trades reduce the score."""
+        with patch("src.services.discovery.pickers.fuzzy.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.fuzzy.MarketDataService") as mock_market, \
+             patch("src.services.discovery.pickers.fuzzy.TradeEmbeddingService") as mock_embedding:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            quote = MagicMock()
+            quote.volume = 5_000_000
+            quote.price = 150.0
+            
+            indicators = MagicMock()
+            indicators.price = 155.0
+            indicators.sma_20 = 150.0
+            indicators.rsi_14 = 55.0
+            indicators.volume_avg_20 = 3_000_000
+            indicators.volume_ratio = 1.67
+            
+            mock_market.return_value.get_quote = AsyncMock(return_value=quote)
+            mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
+            
             from uuid import uuid4
             
             mock_trade_embedding = MagicMock()
@@ -261,13 +323,164 @@ class TestFuzzyPicker:
             
             mock_trade = MagicMock()
             mock_trade.id = mock_trade_embedding.trade_id
-            mock_trade.outcome = "WIN"
+            mock_trade.outcome = "LOSS"
             
             mock_embedding_service = MagicMock()
             mock_embedding_service.find_similar_trades = AsyncMock(return_value=[mock_trade_embedding])
             mock_embedding.return_value = mock_embedding_service
             
-            # Mock database session
+            mock_session = MagicMock()
+            mock_result = MagicMock()
+            mock_result.scalars.return_value.all.return_value = [mock_trade]
+            mock_session.execute = AsyncMock(return_value=mock_result)
+            
+            picker = FuzzyPicker(
+                min_score_threshold=0.0,
+                similarity_weight=0.2,
+                db_session=mock_session,
+            )
+            results = await picker.pick()
+            
+            assert len(results) == 1
+            # 0% win rate should give -1.0 adjustment
+            assert results[0].metadata["similarity_adjustment"] < -0.9
+            # Score should be reduced
+            assert results[0].score < results[0].metadata.get("base_score", 1.0)
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_picker_similarity_adjustment_no_similar_trades(self):
+        """Test that no similar trades results in no adjustment."""
+        with patch("src.services.discovery.pickers.fuzzy.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.fuzzy.MarketDataService") as mock_market, \
+             patch("src.services.discovery.pickers.fuzzy.TradeEmbeddingService") as mock_embedding:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            quote = MagicMock()
+            quote.volume = 5_000_000
+            quote.price = 150.0
+            
+            indicators = MagicMock()
+            indicators.price = 155.0
+            indicators.sma_20 = 150.0
+            indicators.rsi_14 = 55.0
+            indicators.volume_avg_20 = 3_000_000
+            indicators.volume_ratio = 1.67
+            
+            mock_market.return_value.get_quote = AsyncMock(return_value=quote)
+            mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
+            
+            mock_embedding_service = MagicMock()
+            mock_embedding_service.find_similar_trades = AsyncMock(return_value=[])  # No similar trades
+            mock_embedding.return_value = mock_embedding_service
+            
+            mock_session = MagicMock()
+            
+            picker = FuzzyPicker(
+                min_score_threshold=0.0,
+                db_session=mock_session,
+            )
+            results = await picker.pick()
+            
+            assert len(results) == 1
+            # No similarity adjustment should be applied
+            assert "similarity_adjustment" not in results[0].metadata or results[0].metadata.get("similarity_adjustment") == 0.0
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_picker_similarity_adjustment_mixed_outcomes(self):
+        """Test that mixed outcomes result in neutral adjustment."""
+        with patch("src.services.discovery.pickers.fuzzy.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.fuzzy.MarketDataService") as mock_market, \
+             patch("src.services.discovery.pickers.fuzzy.TradeEmbeddingService") as mock_embedding:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            quote = MagicMock()
+            quote.volume = 5_000_000
+            quote.price = 150.0
+            
+            indicators = MagicMock()
+            indicators.price = 155.0
+            indicators.sma_20 = 150.0
+            indicators.rsi_14 = 55.0
+            indicators.volume_avg_20 = 3_000_000
+            indicators.volume_ratio = 1.67
+            
+            mock_market.return_value.get_quote = AsyncMock(return_value=quote)
+            mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
+            
+            from uuid import uuid4
+            
+            mock_trade_embedding1 = MagicMock()
+            mock_trade_embedding1.trade_id = uuid4()
+            mock_trade_embedding2 = MagicMock()
+            mock_trade_embedding2.trade_id = uuid4()
+            
+            mock_trade1 = MagicMock()
+            mock_trade1.id = mock_trade_embedding1.trade_id
+            mock_trade1.outcome = "WIN"
+            mock_trade2 = MagicMock()
+            mock_trade2.id = mock_trade_embedding2.trade_id
+            mock_trade2.outcome = "LOSS"
+            
+            mock_embedding_service = MagicMock()
+            mock_embedding_service.find_similar_trades = AsyncMock(
+                return_value=[mock_trade_embedding1, mock_trade_embedding2]
+            )
+            mock_embedding.return_value = mock_embedding_service
+            
+            mock_session = MagicMock()
+            mock_result = MagicMock()
+            mock_result.scalars.return_value.all.return_value = [mock_trade1, mock_trade2]
+            mock_session.execute = AsyncMock(return_value=mock_result)
+            
+            picker = FuzzyPicker(
+                min_score_threshold=0.0,
+                db_session=mock_session,
+            )
+            results = await picker.pick()
+            
+            assert len(results) == 1
+            # 50% win rate should give ~0.0 adjustment
+            adjustment = results[0].metadata.get("similarity_adjustment", 0.0)
+            assert abs(adjustment) < 0.1  # Close to zero
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_picker_similarity_adjustment_no_outcomes(self):
+        """Test that trades without outcomes result in no adjustment."""
+        with patch("src.services.discovery.pickers.fuzzy.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.fuzzy.MarketDataService") as mock_market, \
+             patch("src.services.discovery.pickers.fuzzy.TradeEmbeddingService") as mock_embedding:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            quote = MagicMock()
+            quote.volume = 5_000_000
+            quote.price = 150.0
+            
+            indicators = MagicMock()
+            indicators.price = 155.0
+            indicators.sma_20 = 150.0
+            indicators.rsi_14 = 55.0
+            indicators.volume_avg_20 = 3_000_000
+            indicators.volume_ratio = 1.67
+            
+            mock_market.return_value.get_quote = AsyncMock(return_value=quote)
+            mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
+            
+            from uuid import uuid4
+            
+            mock_trade_embedding = MagicMock()
+            mock_trade_embedding.trade_id = uuid4()
+            
+            mock_trade = MagicMock()
+            mock_trade.id = mock_trade_embedding.trade_id
+            mock_trade.outcome = None  # No outcome yet
+            
+            mock_embedding_service = MagicMock()
+            mock_embedding_service.find_similar_trades = AsyncMock(return_value=[mock_trade_embedding])
+            mock_embedding.return_value = mock_embedding_service
+            
             mock_session = MagicMock()
             mock_result = MagicMock()
             mock_result.scalars.return_value.all.return_value = [mock_trade]
@@ -280,8 +493,48 @@ class TestFuzzyPicker:
             results = await picker.pick()
             
             assert len(results) == 1
-            # Score should be adjusted upward due to similar WIN trades
-            assert "similarity" in results[0].reason.lower() or results[0].score > 0.5
+            # No outcomes should result in 0.0 adjustment
+            assert "similarity_adjustment" not in results[0].metadata or results[0].metadata.get("similarity_adjustment") == 0.0
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_picker_similarity_adjustment_error_handling(self):
+        """Test that similarity search errors don't break the picker."""
+        with patch("src.services.discovery.pickers.fuzzy.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.fuzzy.MarketDataService") as mock_market, \
+             patch("src.services.discovery.pickers.fuzzy.TradeEmbeddingService") as mock_embedding:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            quote = MagicMock()
+            quote.volume = 5_000_000
+            quote.price = 150.0
+            
+            indicators = MagicMock()
+            indicators.price = 155.0
+            indicators.sma_20 = 150.0
+            indicators.rsi_14 = 55.0
+            indicators.volume_avg_20 = 3_000_000
+            indicators.volume_ratio = 1.67
+            
+            mock_market.return_value.get_quote = AsyncMock(return_value=quote)
+            mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
+            
+            mock_embedding_service = MagicMock()
+            mock_embedding_service.find_similar_trades = AsyncMock(side_effect=Exception("DB error"))
+            mock_embedding.return_value = mock_embedding_service
+            
+            mock_session = MagicMock()
+            
+            picker = FuzzyPicker(
+                min_score_threshold=0.0,
+                db_session=mock_session,
+            )
+            # Should not raise exception, should continue with base score
+            results = await picker.pick()
+            
+            assert len(results) == 1
+            # Should still return a result even if similarity search fails
+            assert results[0].symbol == "AAPL"
 
 
 class TestLLMPicker:
