@@ -4,7 +4,7 @@
 
 Multi-agent LLM-powered trading system built with LangGraph. The system uses a pipeline of specialized AI agents to analyze market data, assess risk, validate patterns, and make trading decisions.
 
-**Stack**: Python 3.12, FastAPI, LangGraph, LangChain, PostgreSQL, Prometheus
+**Stack**: Python 3.12, FastAPI, LangGraph, LangChain, PostgreSQL + pgvector, Prometheus
 
 ---
 
@@ -13,29 +13,34 @@ Multi-agent LLM-powered trading system built with LangGraph. The system uses a p
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              HTTP API (FastAPI)                              │
-│  /cycles/run  /health  /portfolio  /trades  /events  /metrics  /market/*   │
+│  /cycles/run  /health  /portfolio  /trades  /events  /discovery  /metrics  │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         LangGraph Workflow (graph.py)                        │
-│                                                                              │
-│   START → DataAgent → RiskManager → Validator → MetaAgent → END             │
-│              │              │            │            │                      │
-│              ▼              ▼            ▼            ▼                      │
-│          signals[]    risk_assess[]  validations[] decisions[]              │
-│                                                                              │
-│   Conditional edges skip downstream nodes if no data to process              │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                    ┌─────────────────┼─────────────────┐
-                    ▼                 ▼                 ▼
-            ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-            │   LLM API   │   │ Market Data │   │  PostgreSQL │
-            │ (Anthropic/ │   │  (Alpaca/   │   │  (Events,   │
-            │   OpenAI)   │   │  yfinance)  │   │  Trades,    │
-            └─────────────┘   └─────────────┘   │  Portfolio) │
-                                                └─────────────┘
+          ┌───────────────────────────┼───────────────────────────┐
+          ▼                           │                           ▼
+┌───────────────────────┐             │             ┌───────────────────────┐
+│   Symbol Discovery    │             │             │   LangGraph Workflow  │
+│                       │             │             │                       │
+│  Metric ─┐            │             │             │  DataAgent            │
+│  Fuzzy  ─┼─► Ensemble │─────────────┼────────────►│      ▼                │
+│  LLM   ──┘      │     │   symbols   │             │  RiskManager          │
+│                 ▼     │             │             │      ▼                │
+│           Watchlist   │             │             │  Validator ◄── pgvector
+│                       │             │             │      ▼        (similar│
+└───────────────────────┘             │             │  MetaAgent    setups) │
+          │                           │             └───────────────────────┘
+          │                           │                           │
+          │         ┌─────────────────┴─────────────────┐         │
+          │         ▼                 ▼                 ▼         │
+          │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐  │
+          │  │   LLM API   │   │ Market Data │   │  PostgreSQL │  │
+          │  │ (Anthropic/ │   │  (Alpaca/   │   │  + pgvector │◄─┘
+          │  │  OpenAI/    │   │  yfinance)  │   │             │
+          │  │  Gemini)    │   └─────────────┘   │  Embeddings │
+          │  └─────────────┘                     │  Events     │
+          │         ▲                            │  Trades     │
+          └─────────┴────────────────────────────┴─────────────┘
+                   LLM Picker uses market context + similar conditions
 ```
 
 ---
@@ -384,6 +389,171 @@ GET  /api/scheduler/market-status    # Market open status
 
 ---
 
+## TODO: Symbol Discovery System
+
+**Status**: PLANNED
+**Spec**: See `agent-instructions.md` for full requirements
+
+### Overview
+
+Dynamic symbol discovery with three picker strategies and vector database for semantic memory.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Symbol Discovery Pipeline                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌────────────┐   ┌────────────┐   ┌────────────┐              │
+│   │   Metric   │   │   Fuzzy    │   │    LLM     │              │
+│   │   Picker   │   │   Picker   │   │   Picker   │              │
+│   │            │   │            │   │            │              │
+│   │ Pure quant │   │ Weighted   │   │ Raw Claude │              │
+│   │ pass/fail  │   │ scoring    │   │ /Gemini    │              │
+│   └─────┬──────┘   └─────┬──────┘   └─────┬──────┘              │
+│         │                │                │                      │
+│         └────────────────┼────────────────┘                      │
+│                          ▼                                       │
+│                 ┌─────────────────┐     ┌─────────────────┐     │
+│                 │    Ensemble     │◄───►│   pgvector      │     │
+│                 │    Combiner     │     │                 │     │
+│                 └────────┬────────┘     │ - Trade memory  │     │
+│                          │              │ - Similar setups│     │
+│                          ▼              │ - Market context│     │
+│                 ┌─────────────────┐     └─────────────────┘     │
+│                 │ Active Watchlist │                             │
+│                 └─────────────────┘                              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Three Picker Strategies
+
+| Picker | Approach | Use Case |
+|--------|----------|----------|
+| **Metric** | Pure quantitative filters (volume > X, spread < Y) | Baseline, always-on filter |
+| **Fuzzy** | Weighted multi-factor scoring (0-1 scales) | Nuanced ranking with trade-offs |
+| **LLM** | Raw Claude/Gemini call with rich context | Market regime awareness, news integration |
+
+### Vector Database (pgvector)
+
+Using PostgreSQL's pgvector extension for embeddings:
+
+| Table | Purpose |
+|-------|---------|
+| `trade_embeddings` | Embed trade context + outcome for similarity search |
+| `market_condition_embeddings` | Historical market states for regime matching |
+| `symbol_context_embeddings` | News, events, analyst notes per symbol |
+
+**Use cases**:
+- "Find trades with similar setups" → Validator warning
+- "What happened last time VIX was this high?" → LLM Picker context
+- "Similar news events for this symbol" → DataAgent enrichment
+
+### Implementation Phases
+
+#### Phase 1: Foundation
+- [ ] pgvector extension setup (Alembic migration)
+- [ ] `EmbeddingService` with OpenAI text-embedding-3-small
+- [ ] Base `SymbolPicker` protocol and `PickerResult` dataclass
+- [ ] Database models: `discovered_symbols`, `watchlist`, `picker_suggestions`
+- [ ] Configuration: `DiscoverySettings`, `EmbeddingSettings`
+
+#### Phase 2: Pickers
+- [ ] `MetricPicker` - volume, spread, market cap, beta filters
+- [ ] `FuzzyPicker` - liquidity, volatility, momentum, sector balance scores
+- [ ] `LLMPicker` - prompt with portfolio/market context, parse JSON response
+- [ ] `EnsembleCombiner` - weighted merge, deduplication, ranking
+
+#### Phase 3: Vector Integration
+- [ ] Embed trades on completion (`TradeExecuted` event handler)
+- [ ] Embed market conditions daily (VIX, SPY trend, sector performance)
+- [ ] `FuzzyPicker`: query similar trades to adjust scores
+- [ ] `LLMPicker`: include similar conditions in prompt
+- [ ] `Validator`: warn on similar failed setups
+
+#### Phase 4: Analysis & Backtesting
+- [ ] `picker_suggestions` table with forward return tracking
+- [ ] Background job to calculate 1d/5d/20d forward returns
+- [ ] Performance comparison API (`GET /api/discovery/performance`)
+- [ ] Paper trade tracker for hypothetical trades
+- [ ] A/B testing: run all pickers, compare outcomes
+
+#### Phase 5: Production Integration
+- [ ] Scheduled discovery job (every 4 hours during market)
+- [ ] `WatchlistManager` feeds into scheduled trading cycles
+- [ ] Alerts on picker divergence (metric says no, LLM says yes)
+- [ ] Admin UI for manual include/exclude
+
+### Files to Create
+
+```
+src/services/discovery/
+├── __init__.py
+├── service.py                 # SymbolDiscoveryService orchestrator
+├── pickers/
+│   ├── __init__.py
+│   ├── base.py                # SymbolPicker protocol, PickerResult
+│   ├── metric.py              # MetricPicker
+│   ├── fuzzy.py               # FuzzyPicker
+│   └── llm.py                 # LLMPicker
+├── ensemble.py                # EnsembleCombiner
+├── scoring.py                 # Shared scoring utilities
+├── watchlist.py               # WatchlistManager
+└── sources/
+    ├── __init__.py
+    ├── alpaca.py              # Alpaca assets API
+    └── news.py                # News API (future)
+
+src/services/embeddings/
+├── __init__.py
+├── service.py                 # EmbeddingService
+└── providers/
+    ├── __init__.py
+    ├── openai.py              # OpenAI embeddings
+    └── local.py               # Sentence transformers (future)
+
+src/api/routers/
+├── discovery.py               # Discovery API endpoints
+└── embeddings.py              # Embedding admin/debug endpoints
+
+tests/test_discovery/
+├── test_metric_picker.py
+├── test_fuzzy_picker.py
+├── test_llm_picker.py
+├── test_ensemble.py
+└── test_embeddings.py
+```
+
+### Configuration
+
+```bash
+# Discovery settings
+DISCOVERY_METRIC_WEIGHT=0.3
+DISCOVERY_FUZZY_WEIGHT=0.4
+DISCOVERY_LLM_WEIGHT=0.3
+DISCOVERY_ENABLED_PICKERS=["metric", "fuzzy", "llm"]
+DISCOVERY_LLM_PICKER_MODEL=claude-3-5-sonnet-20241022
+DISCOVERY_INTERVAL_HOURS=4
+DISCOVERY_MAX_WATCHLIST_SIZE=20
+
+# Embedding settings
+EMBEDDING_PROVIDER=openai
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSIONS=1536
+```
+
+### Success Metrics
+
+| Metric | Target |
+|--------|--------|
+| Picker Win Rate | > 55% of traded suggestions |
+| Suggestion → Trade Rate | > 30% |
+| Forward Return (5d) | > 1% average |
+| Ensemble vs Best Single | > 10% improvement |
+| Vector Search p95 | < 100ms |
+
+---
+
 ## Future Extensions
 
 ### 1. Event-Triggered Cycles
@@ -398,7 +568,7 @@ Files to create:
 - Trigger run_event_cycle on threshold breach
 ```
 
-### 3. OpenTelemetry Tracing
+### 2. OpenTelemetry Tracing
 
 **Current**: Correlation IDs in logs
 **Needed**: Full distributed tracing with spans
@@ -416,7 +586,7 @@ Changes:
 - trace_id already flows end-to-end
 ```
 
-### 4. LLM-Powered Observability Querying
+### 3. LLM-Powered Observability Querying
 
 **Current**: Raw logs and Prometheus
 **Needed**: Natural language queries over logs/metrics
@@ -428,20 +598,7 @@ Files to create:
 - RAG over events table for historical analysis
 ```
 
-### 5. Vector Store for Trade Memory
-
-**Current**: Events in PostgreSQL only
-**Needed**: Semantic search over past trades
-
-```
-Files to create:
-- src/services/vector_store/       # Chroma or Qdrant
-- Embed trade context (reasoning, outcome)
-- Validator queries similar past setups
-- "Similar setup failed 3 times" detection
-```
-
-### 6. Circuit Breaker Auto-Resume
+### 4. Circuit Breaker Auto-Resume
 
 **Current**: Logic exists in `CircuitBreakerService.check_auto_resume()`, but not automatically triggered
 **Needed**: Periodic or event-driven invocation of auto-resume check
@@ -457,7 +614,7 @@ Remaining work:
 - Consider: evaluate before blocking in runner.py
 ```
 
-### 7. Multi-Strategy Support
+### 5. Multi-Strategy Support
 
 **Current**: Single strategy
 **Needed**: Run multiple strategies with separate allocations
@@ -470,7 +627,7 @@ Changes:
 - Disable underperforming strategies independently
 ```
 
-### 8. Backtesting Framework
+### 6. Backtesting Framework
 
 **Current**: Live/paper only
 **Needed**: Test strategies on historical data
@@ -483,7 +640,7 @@ Files to create:
 - Performance metrics calculation
 ```
 
-### 9. Alert System
+### 7. Alert System
 
 **Current**: Logs only
 **Needed**: Discord/email alerts for key events
