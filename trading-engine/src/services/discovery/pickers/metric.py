@@ -9,6 +9,11 @@ from typing import List
 
 from src.services.discovery.pickers.base import PickerResult, SymbolPicker
 from src.services.discovery.sources.alpaca import AlpacaAssetSource
+from src.services.market_data.fundamentals import (
+    AlpacaFundamentalsProvider,
+    CachedFundamentalsProvider,
+    FundamentalsProvider,
+)
 from src.services.market_data.service import MarketDataService
 from src.utils.logging import get_logger
 
@@ -36,6 +41,7 @@ class MetricPicker(SymbolPicker):
         max_market_cap: float = 10_000_000_000_000,  # $10T maximum (effectively no max)
         min_beta: float = 0.5,
         max_beta: float = 2.0,
+        fundamentals_provider: FundamentalsProvider | None = None,
     ):
         """
         Initialize MetricPicker with filter thresholds.
@@ -47,6 +53,7 @@ class MetricPicker(SymbolPicker):
             max_market_cap: Maximum market capitalization (USD)
             min_beta: Minimum beta (volatility relative to market)
             max_beta: Maximum beta
+            fundamentals_provider: Fundamentals provider (default: CachedFundamentalsProvider with Alpaca fallback)
         """
         self.min_volume = min_volume
         self.max_spread_pct = max_spread_pct
@@ -57,6 +64,10 @@ class MetricPicker(SymbolPicker):
         
         self.asset_source = AlpacaAssetSource()
         self.market_data = MarketDataService()
+        # Use cached provider with Alpaca fallback
+        self.fundamentals = fundamentals_provider or CachedFundamentalsProvider(
+            fallback_provider=AlpacaFundamentalsProvider()
+        )
 
     @property
     def name(self) -> str:
@@ -68,15 +79,21 @@ class MetricPicker(SymbolPicker):
         Pick symbols using quantitative filters.
 
         Args:
-            context: Optional context (not used by MetricPicker)
+            context: Optional context containing:
+                - candidate_symbols: Optional list of symbols to filter (if None, fetches all)
 
         Returns:
             List of PickerResult objects (all with score=1.0 if they pass filters)
         """
         try:
-            # Get all tradable stocks
-            symbols = await self.asset_source.get_stocks()
-            log.info("metric_picker_starting", symbol_count=len(symbols))
+            # Get candidate symbols from context or fetch all
+            if context and "candidate_symbols" in context:
+                symbols = context["candidate_symbols"]
+                log.info("metric_picker_using_candidates", symbol_count=len(symbols))
+            else:
+                # Get all tradable stocks
+                symbols = await self.asset_source.get_stocks()
+                log.info("metric_picker_starting", symbol_count=len(symbols))
         except ValueError as e:
             log.warning("metric_picker_no_alpaca", error=str(e))
             return []  # Can't fetch symbols without Alpaca
@@ -126,9 +143,39 @@ class MetricPicker(SymbolPicker):
                     log.debug("metric_picker_spread_failed", symbol=symbol, spread_pct=spread_pct, threshold=self.max_spread_pct)
                     return False
 
-            # Market cap and beta would require additional API calls
-            # For now, we'll skip these filters (can be added later with Alpaca fundamentals API)
-            # TODO: Add market cap and beta filters when fundamentals API is available
+            # Market cap and beta filters (if fundamentals available)
+            fundamentals = await self.fundamentals.get_fundamentals(symbol)
+            if fundamentals:
+                # Market cap filter
+                if fundamentals.market_cap is not None:
+                    if fundamentals.market_cap < self.min_market_cap:
+                        log.debug(
+                            "metric_picker_market_cap_failed",
+                            symbol=symbol,
+                            market_cap=fundamentals.market_cap,
+                            threshold=self.min_market_cap,
+                        )
+                        return False
+                    if fundamentals.market_cap > self.max_market_cap:
+                        log.debug(
+                            "metric_picker_market_cap_failed",
+                            symbol=symbol,
+                            market_cap=fundamentals.market_cap,
+                            threshold=self.max_market_cap,
+                        )
+                        return False
+
+                # Beta filter
+                if fundamentals.beta is not None:
+                    if fundamentals.beta < self.min_beta or fundamentals.beta > self.max_beta:
+                        log.debug(
+                            "metric_picker_beta_failed",
+                            symbol=symbol,
+                            beta=fundamentals.beta,
+                            min_threshold=self.min_beta,
+                            max_threshold=self.max_beta,
+                        )
+                        return False
 
             return True
 

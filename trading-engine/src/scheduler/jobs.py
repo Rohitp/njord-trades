@@ -94,6 +94,7 @@ def register_scheduled_jobs(scheduler: AsyncIOScheduler) -> None:
     Register all scheduled trading jobs.
 
     Reads scan_times from configuration and creates cron triggers.
+    Also registers background processing jobs.
 
     Args:
         scheduler: APScheduler instance to register jobs with.
@@ -101,6 +102,7 @@ def register_scheduled_jobs(scheduler: AsyncIOScheduler) -> None:
     tz = get_trading_timezone()
     scan_times = settings.scheduling.scan_times
 
+    # Register trading cycle jobs
     for time_str in scan_times:
         try:
             hour, minute = parse_scan_time(time_str)
@@ -137,6 +139,11 @@ def register_scheduled_jobs(scheduler: AsyncIOScheduler) -> None:
                 time_str=time_str,
                 error=str(e),
             )
+
+    # Register background processing jobs
+    from src.scheduler.background_jobs import register_background_jobs
+
+    register_background_jobs(scheduler)
 
 
 def start_scheduler() -> AsyncIOScheduler:

@@ -191,12 +191,20 @@ class TestTradeEmbeddingService:
             )
 
             mock_session = MagicMock()
+            # The new code uses result.all() and extracts row[0] for each row
+            # Mock the query to return results that pass the filter
             mock_result = MagicMock()
-            mock_result.scalars.return_value.all.return_value = [similar_trade]
+            # result.all() returns list of rows, each row is a tuple with TradeEmbedding as first element
+            mock_result.all.return_value = [(similar_trade,)]  # Tuple with TradeEmbedding as first element
             mock_session.execute = AsyncMock(return_value=mock_result)
 
             service = TradeEmbeddingService(embedding_service=mock_service)
-            results = await service.find_similar_trades(query_text, session=mock_session)
+            # Use lower min_similarity to ensure mock results pass
+            results = await service.find_similar_trades(
+                query_text, 
+                session=mock_session,
+                min_similarity=0.0  # Accept all results in test
+            )
 
             assert len(results) == 1
             assert results[0] == similar_trade

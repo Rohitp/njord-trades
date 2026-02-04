@@ -238,6 +238,7 @@ class MarketConditionService:
         self,
         context_text: str,
         limit: int = 5,
+        min_similarity: float = 0.7,
         session: AsyncSession | None = None,
     ) -> list[MarketConditionEmbedding]:
         """
@@ -246,10 +247,11 @@ class MarketConditionService:
         Args:
             context_text: Text describing current market conditions
             limit: Maximum number of results
+            min_similarity: Minimum cosine similarity threshold (0.0-1.0)
             session: Database session
 
         Returns:
-            List of MarketConditionEmbedding records sorted by similarity
+            List of MarketConditionEmbedding records sorted by similarity (highest first)
         """
         if session is None:
             log.warning("similarity_search_no_session")
@@ -260,13 +262,19 @@ class MarketConditionService:
             query_embedding = await self.embedding_service.embed_text(context_text)
 
             # Query using pgvector cosine similarity
+            # For normalized embeddings, cosine_distance = 1 - cosine_similarity
+            # To filter by min_similarity, we need: distance <= 1 - min_similarity
             from pgvector.sqlalchemy import Vector
+            from sqlalchemy import func
+
+            # Calculate max_distance threshold from min_similarity
+            max_distance = 1.0 - min_similarity
+            cosine_dist = MarketConditionEmbedding.embedding.cosine_distance(query_embedding)
 
             stmt = (
                 select(MarketConditionEmbedding)
-                .order_by(
-                    MarketConditionEmbedding.embedding.cosine_distance(query_embedding)
-                )
+                .where(cosine_dist <= max_distance)
+                .order_by(cosine_dist.asc())  # Lower distance = higher similarity
                 .limit(limit)
             )
 
@@ -276,6 +284,7 @@ class MarketConditionService:
             log.info(
                 "similarity_search_complete",
                 query_length=len(context_text),
+                min_similarity=min_similarity,
                 results=len(similar_conditions),
             )
 

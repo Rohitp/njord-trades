@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.services.discovery.pickers.base import PickerResult, SymbolPicker
+from src.services.discovery.pickers.metric import MetricPicker
 from src.services.discovery.sources.alpaca import AlpacaAssetSource
 from src.services.embeddings.market_condition import MarketConditionService
 from src.services.market_data.service import MarketDataService
@@ -80,7 +81,9 @@ class LLMPicker(SymbolPicker):
     def __init__(
         self,
         model_name: str | None = None,
-        max_candidates: int = 50,  # Limit candidates to avoid token limits
+        max_candidates: int = 30,  # Limit candidates to avoid token limits (reduced from 50)
+        prefilter_with_metric: bool = True,  # Pre-filter with MetricPicker before LLM
+        metric_prefilter_limit: int = 30,  # Top N symbols from MetricPicker to send to LLM
         db_session: AsyncSession | None = None,
     ):
         """
@@ -88,17 +91,22 @@ class LLMPicker(SymbolPicker):
 
         Args:
             model_name: LLM model to use (default: from config)
-            max_candidates: Maximum number of candidate symbols to evaluate
+            max_candidates: Maximum number of candidate symbols to evaluate (after pre-filtering)
+            prefilter_with_metric: If True, run MetricPicker first to filter candidates
+            metric_prefilter_limit: Top N symbols from MetricPicker to send to LLM
             db_session: Optional database session for vector similarity search
         """
         self.model_name = model_name or settings.discovery.llm_picker_model
-        self.max_candidates = max_candidates
+        self.max_candidates = max_candidates or settings.discovery.llm_picker_max_candidates
+        self.prefilter_with_metric = prefilter_with_metric if prefilter_with_metric is not None else settings.discovery.llm_picker_prefilter
+        self.metric_prefilter_limit = metric_prefilter_limit or settings.discovery.llm_picker_prefilter_limit
         self.db_session = db_session
         self.llm = self._create_llm()
 
         self.asset_source = AlpacaAssetSource()
         self.market_data = MarketDataService()
         self.market_condition_service = MarketConditionService()
+        self.metric_picker = MetricPicker() if prefilter_with_metric else None
 
     @property
     def name(self) -> str:
@@ -156,14 +164,57 @@ class LLMPicker(SymbolPicker):
         try:
             # Get candidate symbols
             if context and "candidate_symbols" in context:
-                candidate_symbols = context["candidate_symbols"][: self.max_candidates]
+                candidate_symbols = context["candidate_symbols"]
             else:
                 # Fetch all tradable stocks
                 candidate_symbols = await self.asset_source.get_stocks()
-                candidate_symbols = candidate_symbols[: self.max_candidates]
 
             if not candidate_symbols:
                 log.warning("llm_picker_no_candidates")
+                return []
+
+            # Pre-filter with MetricPicker to reduce token usage
+            # Only pre-filter if we have more candidates than the limit
+            # AND if we're not already working with a user-supplied candidate list
+            user_supplied_candidates = context and "candidate_symbols" in context
+            should_prefilter = (
+                self.prefilter_with_metric
+                and self.metric_picker
+                and len(candidate_symbols) > self.metric_prefilter_limit
+                and not user_supplied_candidates  # Don't pre-filter user-supplied lists
+            )
+
+            if should_prefilter:
+                log.info(
+                    "llm_picker_prefiltering",
+                    initial_count=len(candidate_symbols),
+                    prefilter_limit=self.metric_prefilter_limit,
+                )
+                try:
+                    # Run MetricPicker with the candidate list to avoid full market scan
+                    # Pass candidate_symbols in context so MetricPicker can filter from them
+                    metric_context = {"candidate_symbols": candidate_symbols}
+                    metric_results = await self.metric_picker.pick(context=metric_context)
+                    # Extract symbols from MetricPicker results
+                    prefiltered_symbols = [r.symbol for r in metric_results[: self.metric_prefilter_limit]]
+                    
+                    # Intersect: only keep symbols that passed MetricPicker filters
+                    candidate_symbols = [s for s in candidate_symbols if s in prefiltered_symbols]
+                    
+                    log.info(
+                        "llm_picker_prefiltered",
+                        prefiltered_count=len(candidate_symbols),
+                    )
+                except Exception as e:
+                    log.warning("llm_picker_prefilter_failed", error=str(e))
+                    # Continue with original candidates if pre-filtering fails
+                    candidate_symbols = candidate_symbols[: self.max_candidates]
+
+            # Final limit to max_candidates
+            candidate_symbols = candidate_symbols[: self.max_candidates]
+
+            if not candidate_symbols:
+                log.warning("llm_picker_no_candidates_after_filtering")
                 return []
 
             log.info("llm_picker_starting", candidate_count=len(candidate_symbols))
@@ -181,6 +232,7 @@ class LLMPicker(SymbolPicker):
                     similar_conditions = await self.market_condition_service.find_similar_conditions(
                         context_text=current_context,
                         limit=3,  # Top 3 similar conditions
+                        min_similarity=0.7,  # Only include conditions with >= 70% similarity
                         session=self.db_session,
                     )
                     log.debug(

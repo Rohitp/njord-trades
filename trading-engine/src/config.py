@@ -147,6 +147,7 @@ class EmbeddingSettings(BaseSettings):
     provider: str = Field(default="bge-small", description="bge-small|openai|sentence-transformers")
     model_name: str = Field(default="BAAI/bge-small-en-v1.5", description="Model name (for local providers)")
     dimensions: int = Field(default=384, description="Embedding dimensions (384 for BGE-small)")
+    min_similarity: float = Field(default=0.7, description="Minimum similarity threshold (0.0-1.0) for vector searches")
 
 
 class DiscoverySettings(BaseSettings):
@@ -168,6 +169,9 @@ class DiscoverySettings(BaseSettings):
         default="claude-3-5-sonnet-20241022",
         description="LLM model for LLMPicker"
     )
+    llm_picker_max_candidates: int = Field(default=30, description="Max candidates to send to LLM (after pre-filtering)")
+    llm_picker_prefilter: bool = Field(default=True, description="Pre-filter candidates with MetricPicker before LLM")
+    llm_picker_prefilter_limit: int = Field(default=30, description="Top N symbols from MetricPicker to send to LLM")
     
     # Discovery schedule
     interval_hours: int = Field(default=4, description="Discovery job interval (hours)")

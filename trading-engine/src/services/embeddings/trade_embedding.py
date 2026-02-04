@@ -195,7 +195,7 @@ class TradeEmbeddingService:
             session: Database session
 
         Returns:
-            List of TradeEmbedding records sorted by similarity
+            List of TradeEmbedding records sorted by similarity (highest first)
         """
         if session is None:
             log.warning("similarity_search_no_session")
@@ -206,32 +206,39 @@ class TradeEmbeddingService:
             query_embedding = await self.embedding_service.embed_text(context_text)
 
             # Query using pgvector cosine similarity
-            # Note: pgvector uses cosine distance (1 - similarity), so we subtract from 1.0
+            # For normalized embeddings, cosine_distance = 1 - cosine_similarity
+            # So: similarity = 1 - cosine_distance
+            # To filter by min_similarity, we need: 1 - distance >= min_similarity
+            # Which means: distance <= 1 - min_similarity
             from pgvector.sqlalchemy import Vector
+            from sqlalchemy import func
+
+            # Calculate max_distance threshold from min_similarity
+            # similarity = 1 - distance, so distance = 1 - similarity
+            max_distance = 1.0 - min_similarity
+            cosine_dist = TradeEmbedding.embedding.cosine_distance(query_embedding)
 
             stmt = (
                 select(TradeEmbedding)
-                .order_by(
-                    TradeEmbedding.embedding.cosine_distance(query_embedding)
-                )
+                .where(cosine_dist <= max_distance)
+                .order_by(cosine_dist.asc())  # Lower distance = higher similarity
                 .limit(limit)
             )
 
             result = await session.execute(stmt)
-            similar_trades = result.scalars().all()
+            rows = result.all()
 
-            # Filter by minimum similarity
-            # Note: We'd need to calculate actual similarity, but for now return all results
-            # In production, you'd compute: 1 - cosine_distance
-            filtered = similar_trades[:limit]
+            # Extract TradeEmbedding objects (first column)
+            similar_trades = [row[0] for row in rows]
 
             log.info(
                 "similarity_search_complete",
                 query_length=len(context_text),
-                results=len(filtered),
+                min_similarity=min_similarity,
+                results=len(similar_trades),
             )
 
-            return filtered
+            return similar_trades
 
         except Exception as e:
             log.error("similarity_search_error", error=str(e), exc_info=True)

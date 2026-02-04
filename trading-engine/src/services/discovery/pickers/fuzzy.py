@@ -18,6 +18,11 @@ from src.services.discovery.scoring import (
 )
 from src.services.discovery.sources.alpaca import AlpacaAssetSource
 from src.services.embeddings.trade_embedding import TradeEmbeddingService
+from src.services.market_data.fundamentals import (
+    AlpacaFundamentalsProvider,
+    CachedFundamentalsProvider,
+    FundamentalsProvider,
+)
 from src.services.market_data.service import MarketDataService
 from src.utils.logging import get_logger
 
@@ -46,6 +51,7 @@ class FuzzyPicker(SymbolPicker):
         similarity_weight: float = 0.15,  # Weight for similarity-based adjustment
         min_score_threshold: float = 0.3,  # Only return symbols above this
         db_session: AsyncSession | None = None,  # Optional DB session for similarity search
+        fundamentals_provider: FundamentalsProvider | None = None,
     ):
         """
         Initialize FuzzyPicker with scoring weights.
@@ -58,6 +64,7 @@ class FuzzyPicker(SymbolPicker):
             similarity_weight: Weight for similarity-based adjustment (default: 0.15)
             min_score_threshold: Minimum composite score to include (default: 0.3)
             db_session: Database session for similarity search (optional)
+            fundamentals_provider: Fundamentals provider for sector data (optional)
         """
         # Normalize base weights (excluding similarity which is applied as adjustment)
         base_total = liquidity_weight + volatility_weight + momentum_weight + sector_weight
@@ -80,6 +87,10 @@ class FuzzyPicker(SymbolPicker):
         self.asset_source = AlpacaAssetSource()
         self.market_data = MarketDataService()
         self.trade_embedding_service = TradeEmbeddingService() if db_session else None
+        # Use cached provider with Alpaca fallback
+        self.fundamentals = fundamentals_provider or CachedFundamentalsProvider(
+            fallback_provider=AlpacaFundamentalsProvider()
+        )
 
     @property
     def name(self) -> str:
@@ -198,8 +209,26 @@ class FuzzyPicker(SymbolPicker):
 
         # 4. Sector balance score (penalize over-concentration)
         sector_balance = 1.0  # Default: no penalty
-        # TODO: Implement sector balance when sector data is available
-        # For now, this is a placeholder
+        if portfolio_positions:
+            # Get symbol's sector from fundamentals
+            fundamentals = await self.fundamentals.get_fundamentals(symbol)
+            if fundamentals and fundamentals.sector:
+                # Count current positions in same sector
+                sector_count = sum(
+                    1
+                    for pos in portfolio_positions
+                    if pos.get("sector") == fundamentals.sector
+                )
+                total_positions = len(portfolio_positions)
+                
+                # Penalize if sector is over-represented (>30% of portfolio)
+                sector_pct = sector_count / total_positions if total_positions > 0 else 0.0
+                if sector_pct > 0.3:
+                    # Reduce score proportionally to over-concentration
+                    sector_balance = 1.0 - (sector_pct - 0.3) / 0.7  # 0.3 -> 1.0, 1.0 -> 0.0
+                    sector_balance = max(0.0, sector_balance)
+                metadata["sector"] = fundamentals.sector
+                metadata["sector_pct"] = sector_pct
         metadata["sector_balance_score"] = sector_balance
 
         # Calculate weighted composite score (base score)
