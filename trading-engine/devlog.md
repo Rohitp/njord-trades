@@ -1420,4 +1420,157 @@ uv run pytest tests/unit/scheduler/ -v
 
 ---
 
-*Last updated: 2026-02-04 (All gaps fixed: SymbolDiscoveryService, Fundamentals Provider, Background Processing)*
+## Phase 13: S&P 500 & Sentiment Integration (PLANNED)
+
+**Status**: PLANNED | Not yet started
+
+### Overview
+
+This phase adds:
+1. **S&P 500 Symbol Access**: LLMPicker can evaluate all S&P 500 constituents (500 symbols vs current limited set)
+2. **Sentiment Data Collection**: Fetch and store news/sentiment for symbols from multiple sources
+3. **Picker Integration**: All pickers can use sentiment data in their decisions
+
+### Architecture
+
+**S&P 500 Source**:
+- Static list (updated quarterly) or API-based (S&P Dow Jones Indices)
+- Cached in database or config file
+- Integrated into symbol discovery flow
+- LLMPicker uses S&P 500 as candidate pool instead of all Alpaca symbols
+
+**Sentiment Pipeline**:
+```
+News APIs → SentimentService → NewsArticle (DB) → SentimentSnapshot (DB) → Pickers
+```
+
+**Data Flow**:
+1. Background jobs fetch news articles daily for watchlist symbols
+2. SentimentService analyzes and scores articles (LLM or pre-trained model)
+3. Aggregated sentiment stored in `SentimentSnapshot` (daily per symbol)
+4. Pickers query sentiment when evaluating symbols
+5. LLMPicker includes sentiment in prompt context
+6. FuzzyPicker uses sentiment as scoring factor
+7. MetricPicker can filter by sentiment threshold
+
+### Implementation Notes
+
+**S&P 500 List**:
+- Option 1: Static CSV file (update quarterly manually)
+- Option 2: Fetch from S&P Dow Jones Indices API (may require subscription)
+- Option 3: Use free sources (Wikipedia, financial data sites)
+- Cache in database table or config file for fast access
+
+**Sentiment Scoring**:
+- Option 1: LLM-based (Claude/GPT) - Higher quality, more expensive
+- Option 2: Pre-trained model (VADER, FinBERT) - Faster, cheaper, good quality
+- Option 3: Hybrid - Use model for bulk, LLM for important articles
+- Store both raw score (-1 to +1) and label (positive/negative/neutral)
+
+**News Sources**:
+- NewsAPI (free tier: 100 requests/day, paid: more)
+- Alpaca News API (if available with subscription)
+- Alpha Vantage News & Sentiment (free tier available)
+- Consider multiple sources for redundancy
+
+**Caching & Deduplication**:
+- Cache articles by URL to avoid duplicates
+- Check `NewsArticle.url` before inserting
+- Update existing articles if re-fetched (sentiment may change)
+
+**Rate Limits**:
+- Respect API rate limits (NewsAPI, Alpha Vantage)
+- Implement exponential backoff
+- Queue requests if needed
+
+**Cost Considerations**:
+- LLM-based sentiment: ~$0.01-0.05 per article (depending on model)
+- Pre-trained model: Free (local inference)
+- News API costs: Free tier or $449/month (NewsAPI Pro)
+- Estimate: 500 symbols × 5 articles/day × $0.02 = $50/day with LLM (consider model approach)
+
+### Database Schema
+
+**NewsArticle**:
+```python
+- id: UUID
+- symbol: String(10) - Indexed
+- headline: Text
+- content: Text (full article or summary)
+- source: String(100) - "newsapi", "alpaca", "alpha_vantage"
+- url: String(500) - Unique index for deduplication
+- published_at: DateTime(timezone=True) - Indexed
+- sentiment_score: Numeric(3, 2) - -1.0 to +1.0
+- sentiment_label: String(20) - "positive", "negative", "neutral"
+- created_at: DateTime(timezone=True)
+```
+
+**Note**: News article embeddings are stored in the existing `SymbolContextEmbedding` table:
+- `context_type="news"` for news articles
+- `context_text` = headline + content summary
+- `source_url` = article URL
+- `timestamp` = published_at
+- `embedding` = Vector(384) - Generated from headline + content
+- Enables similarity search: "Find similar news patterns for this symbol"
+
+**SentimentSnapshot**:
+```python
+- id: UUID
+- symbol: String(10) - Indexed
+- date: Date - Indexed, unique with symbol
+- avg_sentiment: Numeric(3, 2) - Average sentiment score
+- article_count: Integer - Number of articles analyzed
+- sources: JSONB - List of sources used
+- created_at: DateTime(timezone=True)
+```
+
+### Dependencies
+
+- Phase 3.3 (LLMPicker) - Must be complete ✓
+- Phase 12.4 (Discovery Service) - Must be complete ✓
+- External APIs: NewsAPI, Alpaca News, or Alpha Vantage
+- Optional: LLM API for sentiment analysis (or use local model)
+
+### Integration Points
+
+**LLMPicker Changes**:
+- Accept S&P 500 symbols as candidate pool (instead of all Alpaca symbols)
+- Include sentiment section in prompt:
+  ```
+  RECENT SENTIMENT FOR {SYMBOL}:
+  - Average Sentiment: 0.65 (Positive)
+  - Articles Analyzed: 12
+  - Key Headlines:
+    * "Company reports strong earnings" (Positive)
+    * "Analyst upgrades rating" (Positive)
+  ```
+
+**FuzzyPicker Changes**:
+- Add `sentiment_score` to composite score calculation
+- Weight: `sentiment_weight` (default: 0.1)
+- Formula: `score += sentiment_score * sentiment_weight`
+
+**MetricPicker Changes**:
+- Optional filter: `min_sentiment_threshold` (default: None)
+- Reject symbols below threshold if enabled
+
+**SymbolDiscoveryService Changes**:
+- Query `SentimentSnapshot` for all candidate symbols before running pickers
+- Pass sentiment data in context: `context["sentiment"] = {symbol: snapshot, ...}`
+
+### Next Steps
+
+1. Research S&P 500 data sources (free vs paid)
+2. Choose sentiment analysis approach (LLM vs model vs hybrid)
+3. Design database schema for news/sentiment
+4. Implement S&P 500 source (15.1)
+5. Update LLMPicker for S&P 500 access (15.2)
+6. Implement sentiment providers (15.4)
+7. Implement sentiment service (15.5)
+8. Add background jobs (15.6)
+9. Integrate into pickers (15.7)
+10. Add API endpoints (15.8)
+
+---
+
+*Last updated: 2026-02-04 (Phase 13: S&P 500 & Sentiment Integration planned)*

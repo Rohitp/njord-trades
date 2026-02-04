@@ -80,6 +80,8 @@
 - [x] Parse JSON response from LLM
 - [x] Handle LLM errors gracefully
 - [x] Test with various market conditions
+- [ ] **Note**: S&P 500 symbol access will be added in Phase 13.1-13.2
+- [ ] **Note**: Sentiment data integration will be added in Phase 13.7
 
 ### 3.4 EnsembleCombiner ✓
 - [x] Create `src/services/discovery/ensemble.py`
@@ -391,9 +393,100 @@
 
 ---
 
-## Phase 13: Paper Trading
+## Phase 13: S&P 500 & Sentiment Integration
 
-### 13.1 Pre-Flight Checks
+**Status**: PLANNED | Not yet started
+
+### 13.1 S&P 500 Symbol Source
+- [ ] Create `src/services/discovery/sources/sp500.py` (SP500SymbolSource)
+- [ ] Fetch S&P 500 constituents (static list or API)
+- [ ] Cache S&P 500 list (update quarterly)
+- [ ] Integrate into AlpacaAssetSource or create separate source
+- [ ] Add config option: `discovery.use_sp500_symbols` (default: True)
+- [ ] Test symbol fetching
+
+### 13.2 LLMPicker S&P 500 Access
+- [ ] Modify LLMPicker to accept S&P 500 symbols as candidate pool
+- [ ] Update `_build_user_prompt()` to indicate S&P 500 scope
+- [ ] Add config option: `discovery.llm_picker_use_sp500` (default: True)
+- [ ] Ensure pre-filtering works with S&P 500 symbols
+- [ ] Test LLMPicker with S&P 500 symbols
+
+### 13.3 Sentiment Data Models
+- [ ] Add `NewsArticle` model to `src/database/models.py`
+  - Fields: id, symbol, headline, content, source, url, published_at, sentiment_score, sentiment_label, created_at
+  - **Note**: Use existing `SymbolContextEmbedding` model for vector embeddings of news articles
+- [ ] Add `SentimentSnapshot` model (aggregated sentiment per symbol per day)
+  - Fields: id, symbol, date, avg_sentiment, article_count, sources, created_at
+- [ ] Create Alembic migration for sentiment tables
+- [ ] Add indexes on symbol, date, published_at, url (for deduplication)
+- [ ] **Use pgvector**: Store news article embeddings in `SymbolContextEmbedding` table
+  - `context_type="news"` for news articles
+  - `context_text` = headline + content summary
+  - `source_url` = article URL
+  - `timestamp` = published_at
+
+### 13.4 Sentiment Data Providers
+- [ ] Create `src/services/sentiment/__init__.py`
+- [ ] Create `src/services/sentiment/providers/__init__.py`
+- [ ] Create `src/services/sentiment/providers/base.py` (SentimentProvider ABC)
+- [ ] Create `src/services/sentiment/providers/newsapi.py` (NewsAPI integration)
+- [ ] Create `src/services/sentiment/providers/alpaca_news.py` (Alpaca News API)
+- [ ] Create `src/services/sentiment/providers/alpha_vantage.py` (Alpha Vantage News)
+- [ ] Add retry logic and error handling
+- [ ] Add rate limiting
+- [ ] Test each provider
+
+### 13.5 Sentiment Analysis Service
+- [ ] Create `src/services/sentiment/service.py` (SentimentService)
+- [ ] Implement sentiment scoring (using LLM or pre-trained model)
+- [ ] Generate embeddings for news articles using `EmbeddingService`
+- [ ] Store embeddings in `SymbolContextEmbedding` table (context_type="news")
+- [ ] Aggregate sentiment by symbol and date
+- [ ] Store in `NewsArticle` and `SentimentSnapshot` tables
+- [ ] Add caching layer (avoid re-fetching same articles by URL)
+- [ ] Add deduplication (check URL before inserting)
+- [ ] Implement similarity search: `find_similar_news(symbol, query_text, limit)`
+- [ ] Test sentiment extraction, embedding generation, and storage
+
+### 13.6 Sentiment Background Jobs
+- [ ] Create `src/scheduler/sentiment_jobs.py`
+- [ ] Daily job: Fetch news for watchlist symbols (runs at market open)
+- [ ] Hourly job: Update sentiment snapshots (runs during market hours)
+- [ ] Register jobs in `src/scheduler/jobs.py`
+- [ ] Add config: `sentiment.fetch_interval_hours`, `sentiment.snapshot_interval_hours`
+- [ ] Test scheduled sentiment collection
+
+### 13.7 Picker Sentiment Integration
+- [ ] Update `LLMPicker._build_user_prompt()` to include sentiment data
+  - Add "RECENT SENTIMENT" section with avg sentiment, article count, key headlines
+  - **Use vector similarity**: Query `SymbolContextEmbedding` for similar news patterns
+  - Include similar historical news events that led to positive/negative outcomes
+- [ ] Update `FuzzyPicker` to use sentiment in scoring (optional weight)
+  - Add `sentiment_weight` parameter (default: 0.1)
+  - Positive sentiment boosts score, negative reduces
+  - **Optional**: Use vector similarity to find similar news patterns
+- [ ] Update `MetricPicker` to filter by sentiment (optional)
+  - Add `min_sentiment_threshold` parameter (default: None, disabled)
+- [ ] Add sentiment context to `SymbolDiscoveryService.run_discovery_cycle()`
+  - Query `SentimentSnapshot` for candidate symbols
+  - Query `SymbolContextEmbedding` for similar news patterns (vector search)
+  - Pass sentiment data in context to pickers
+- [ ] Test pickers with sentiment data and vector similarity
+
+### 13.8 Sentiment API Endpoints
+- [ ] Create `src/api/routers/sentiment.py`
+- [ ] `GET /api/sentiment/{symbol}` - Get sentiment for symbol (latest snapshot)
+- [ ] `GET /api/sentiment/{symbol}/articles` - Get news articles for symbol
+- [ ] `GET /api/sentiment/snapshot` - Get daily sentiment snapshot for all symbols
+- [ ] `GET /api/sentiment/{symbol}/history` - Get sentiment history (last N days)
+- [ ] Test all endpoints
+
+---
+
+## Phase 14: Paper Trading
+
+### 14.1 Pre-Flight Checks
 - [ ] Verify end-to-end cycle works
 - [ ] Test database writes (trades, positions, events)
 - [ ] Verify paper broker works
@@ -401,21 +494,21 @@
 - [ ] Check all API endpoints
 - [ ] Verify logging and metrics
 
-### 13.2 Environment Setup
+### 14.2 Environment Setup
 - [ ] Configure `.env` file
 - [ ] Set LLM API keys
 - [ ] Configure database connection
 - [ ] Set watchlist symbols
 - [ ] Test all connections
 
-### 13.3 Deployment
+### 14.3 Deployment
 - [ ] Deploy to AWS (or run locally)
 - [ ] Start all services
 - [ ] Verify scheduler starts
 - [ ] Monitor initial cycles
 - [ ] Fix any issues
 
-### 13.4 Monitoring (2 weeks)
+### 14.4 Monitoring (2 weeks)
 - [ ] Daily log reviews
 - [ ] Check portfolio state daily
 - [ ] Monitor for errors/crashes
@@ -423,7 +516,7 @@
 - [ ] Iterate on prompts based on results
 - [ ] Run nightly evals
 
-### 13.5 Success Criteria
+### 14.5 Success Criteria
 - [ ] No system crashes
 - [ ] Sharpe ratio > 0
 - [ ] Win rate > 50%
@@ -434,9 +527,9 @@
 
 ---
 
-## Phase 14: Production Launch
+## Phase 15: Production Launch
 
-### 14.1 Final Checks
+### 15.1 Final Checks
 - [ ] All safety checks pass
 - [ ] Circuit breakers tested
 - [ ] DB transactions rollback on error
@@ -448,7 +541,7 @@
 - [ ] Paper trading completed (2 weeks)
 - [ ] Ready to risk £500
 
-### 14.2 Production Switch
+### 15.2 Production Switch
 - [ ] Switch Alpaca to live mode
 - [ ] Deploy with £500 initial capital
 - [ ] Monitor obsessively (first week)
@@ -472,7 +565,8 @@
 - Phase 8 (Discovery Analysis) → Phase 12 (Discovery Production)
 - Phase 9 (Chat UI) → Phase 1 (pgvector) + Phase 4 (Vector Integration)
 - Phase 10 (Evals) → Can run in parallel
-- Phase 11 (Deployment) → Phase 13 (Paper Trading)
-- Phase 12 (Discovery Production) → Phase 13 (Paper Trading)
-- Phase 13 (Paper Trading) → Phase 14 (Production)
+- Phase 11 (Deployment) → Phase 14 (Paper Trading)
+- Phase 12 (Discovery Production) → Phase 13 (S&P 500 & Sentiment)
+- Phase 13 (S&P 500 & Sentiment) → Phase 14 (Paper Trading)
+- Phase 14 (Paper Trading) → Phase 15 (Production)
 
