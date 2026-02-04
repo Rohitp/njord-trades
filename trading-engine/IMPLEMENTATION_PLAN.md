@@ -1,5 +1,15 @@
 # Implementation Plan
 
+## Overview
+
+**Core Trading Agent** (Phases 1-7): The autonomous trading system with 4 agents, workflow, execution, circuit breakers, and alerts. **Functionally complete after Phase 7.**
+
+**Enhancements & Analysis** (Phases 8, 12-13): Discovery analysis, production integration, S&P 500 & sentiment data. **Enhancements to core functionality.**
+
+**Observability & Operations** (Phase 9): Grafana dashboards, LangSmith tracing, Ops Portal chat. **Monitoring and debugging tools.**
+
+**Evaluation & Deployment** (Phases 10-11, 14-15): Testing framework, CI/CD, paper trading, production launch. **Infrastructure and validation.**
+
 ## Phase 1: pgvector Foundation ✓
 
 **Status**: COMPLETE | See devlog.md "Phase 1: pgvector Foundation" section
@@ -186,6 +196,8 @@
 
 ## Phase 7: Alert System (IN PROGRESS)
 
+**Status**: Phase 7.1 & 7.2 COMPLETE | Phase 7.3 PLANNED | See devlog.md "Phase 7: Alert System" section
+
 ### 7.1 Telegram Integration ✓
 - [x] Create `src/services/alerts/__init__.py`
 - [x] Create `src/services/alerts/telegram.py`
@@ -194,18 +206,12 @@
 - [x] Test message delivery via API endpoint
 - [x] Add `POST /api/system/alerts/test` endpoint
 
-### 7.2 Email Integration
-- [ ] Create `src/services/alerts/email.py`
-- [ ] Integrate AWS SES
-- [ ] Create email templates
-- [ ] Test email delivery
-
-### 7.3 Alert Service ✓
+### 7.2 Alert Service ✓
 - [x] Create `src/services/alerts/service.py`
-- [x] Implement alert routing (Telegram provider)
+- [x] Implement alert routing (Telegram provider only)
 - [x] Add alert triggers:
   - Circuit breaker activation ✓
-  - Position changes (on trade execution) ✓
+  - Position changes (on trade execution, gated by severity rules) ✓
   - Auto-resume conditions met ✓
   - System errors (template ready)
   - Daily P&L summary (template ready, needs background job)
@@ -213,6 +219,26 @@
 - [x] Integrate into execution service (position changes)
 - [x] Write unit tests for Telegram client and alert service
 - [ ] Add daily P&L summary background job (can be done in Phase 8 or later)
+
+### 7.3 Telegram Bot Query Interface (PLANNED)
+- [ ] Create `src/services/alerts/telegram_bot.py` (bot command handler)
+- [ ] Implement webhook endpoint for Telegram updates
+- [ ] Add command handlers:
+  - `/status` - System status (trading enabled, circuit breaker, portfolio value)
+  - `/portfolio` - Current holdings, cash, exposure
+  - `/trades` - Recent trades (last N trades)
+  - `/metrics` - Performance metrics (Sharpe, win rate, drawdown, P&L)
+  - `/logs` - Query recent logs (filter by level, component, time range)
+  - `/query` - Natural language query (uses LLM to convert to SQL/API calls)
+- [ ] Integrate with existing services:
+  - Portfolio state queries
+  - Trade history queries
+  - Performance analytics
+  - Log search (structured log queries)
+- [ ] Add authentication (verify chat_id matches configured chat_id)
+- [ ] Add rate limiting (prevent spam)
+- [ ] Test all commands
+- [ ] Document bot commands in README
 
 ---
 
@@ -238,76 +264,180 @@
 
 ---
 
-## Phase 9: Chat UI (Chainlit)
+## Phase 9: Observability & Operations Portal
 
-### 9.1 Setup
-- [ ] Create `chat-ui/` directory
-- [ ] Create `chat-ui/Dockerfile`
-- [ ] Create `chat-ui/pyproject.toml`
-- [ ] Create `chat-ui/src/app.py` (Chainlit app)
+**Status**: PLANNED | Grafana + LangSmith + Ops Portal architecture
+
+**Note**: Telegram bot (Phase 7.3) provides basic query capabilities for quick checks. Full observability stack provides dashboards, tracing, and chat interface.
+
+### 9.1 Telegram Bot Query Interface (See Phase 7.3)
+- [ ] Implemented in Phase 7.3
+- [ ] Provides basic query capabilities via Telegram commands
+- [ ] Quick status checks and simple queries
+- [ ] Mobile-friendly for on-the-go monitoring
+
+### 9.2 Grafana Integration (REQUIRED)
+
+**Status**: REQUIRED | Handles dashboards, alerts, log panels
+
+#### 9.2.1 Grafana Setup
+- [ ] Add Grafana to `docker-compose.yml`
+- [ ] Configure Grafana with persistent storage
+- [ ] Set up Prometheus as data source
+- [ ] Configure PostgreSQL as data source (for custom queries)
+- [ ] Set up authentication (API key or OAuth)
+- [ ] Create initial dashboard structure
+
+#### 9.2.2 Grafana Dashboards
+- [ ] **Portfolio Dashboard**:
+  - [ ] Real-time portfolio value (time series panel)
+  - [ ] Position breakdown (pie chart)
+  - [ ] Sector allocation (bar chart)
+  - [ ] Cash vs deployed capital (stat panel)
+  - [ ] Query from PostgreSQL `portfolio_state` and `positions` tables
+- [ ] **Performance Dashboard**:
+  - [ ] P&L over time (time series from `trades` table)
+  - [ ] Win rate by confidence bucket (bar chart)
+  - [ ] Sharpe ratio trend (calculated metric)
+  - [ ] Drawdown visualization (area chart)
+  - [ ] Query from `trades` and `portfolio_state` tables
+- [ ] **Trading Activity Dashboard**:
+  - [ ] Recent trades timeline (table panel)
+  - [ ] Trade outcomes distribution (pie chart)
+  - [ ] Symbol frequency (bar chart)
+  - [ ] Query from `trades` table
+- [ ] **Discovery Dashboard**:
+  - [ ] Picker performance comparison (bar chart)
+  - [ ] Watchlist changes over time (time series)
+  - [ ] Discovery cycle results (table)
+  - [ ] Query from `discovered_symbols` and `picker_suggestions` tables
+- [ ] **Circuit Breaker Dashboard**:
+  - [ ] Circuit breaker status (stat panel)
+  - [ ] Drawdown history (time series)
+  - [ ] Consecutive losses tracking (bar chart)
+  - [ ] Query from `system_state` and `trades` tables
+- [ ] **System Metrics Dashboard**:
+  - [ ] CPU, memory, request latency (from Prometheus)
+  - [ ] Trading cycle duration (from Prometheus metrics)
+  - [ ] Agent execution time (from Prometheus metrics)
+  - [ ] Error rates (from Prometheus metrics)
+
+#### 9.2.3 Grafana Alerts
+- [ ] Configure alert rules for:
+  - [ ] Circuit breaker activation
+  - [ ] High drawdown (>15%)
+  - [ ] System errors (error rate spike)
+  - [ ] Trading cycle failures
+- [ ] Set up notification channels (Telegram integration)
+- [ ] Test alert delivery
+
+#### 9.2.4 Grafana Log Panels
+- [ ] Configure Loki as log aggregation (or use PostgreSQL log queries)
+- [ ] Create log panels for:
+  - [ ] Trading cycle logs
+  - [ ] Agent execution logs
+  - [ ] Error logs
+  - [ ] System logs
+- [ ] Set up log search and filtering
+- [ ] Link logs to traces (via LangSmith)
+
+### 9.3 LangSmith Integration (REQUIRED)
+
+**Status**: REQUIRED | Provides LLM observability, tracing, and prompt visibility
+
+#### 9.3.1 LangSmith Setup
+- [ ] Add LangSmith dependencies to `pyproject.toml`
+- [ ] Configure LangSmith API key in `.env`
+- [ ] Set up LangSmith project for trading system
+- [ ] Configure tracing for all LLM calls:
+  - [ ] Data Agent LLM calls
+  - [ ] Risk Manager LLM calls (if any)
+  - [ ] Validator LLM calls
+  - [ ] Meta-Agent LLM calls
+  - [ ] Ops Portal chat LLM calls
+- [ ] Test tracing works
+
+#### 9.3.2 LangSmith Trace Integration
+- [ ] Instrument all agent LLM calls with LangSmith
+- [ ] Add trace metadata:
+  - [ ] Cycle ID
+  - [ ] Symbol
+  - [ ] Agent type
+  - [ ] Signal ID
+- [ ] Link traces to database events (via trace IDs)
+- [ ] Configure trace sampling (100% for production)
+- [ ] Test trace visibility in LangSmith UI
+
+#### 9.3.3 Prompt Visibility
+- [ ] All system prompts visible in LangSmith
+- [ ] All user prompts visible in LangSmith
+- [ ] Show intermediate reasoning steps
+- [ ] Display token usage and latency per call
+- [ ] Link traces to Grafana dashboards (via deep links)
+
+### 9.4 Operations Portal (REQUIRED)
+
+**Status**: REQUIRED | FastAPI/Next.js portal with chat interface and deep links
+
+#### 9.4.1 Portal Setup
+- [ ] Create `ops-portal/` directory
+- [ ] Set up Next.js frontend (`ops-portal/frontend/`)
+- [ ] Set up FastAPI backend (`ops-portal/backend/`)
 - [ ] Add to `docker-compose.yml`
+- [ ] Configure authentication (API key or OAuth)
+- [ ] Set up API client to trading engine
 
-### 9.2 Tool 1: SQL Executor
-- [ ] Create `chat-ui/src/tools/sql_executor.py`
-- [ ] Convert natural language → SQL
-- [ ] Execute on PostgreSQL
-- [ ] Return formatted results
-- [ ] Test with various queries
+#### 9.4.2 Chat Interface
+- [ ] Create chat UI component (Next.js)
+- [ ] Implement LLM-powered chat backend (FastAPI)
+- [ ] Add tools for chat:
+  - [ ] SQL Executor (natural language → SQL)
+  - [ ] Portfolio queries
+  - [ ] Trade history queries
+  - [ ] Performance analytics
+  - [ ] Control commands (pause/resume)
+- [ ] Integrate LangSmith tracing for chat LLM calls
+- [ ] Display chat history with trace links
+- [ ] Test chat interface
 
-### 9.3 Tool 2: Event Log RAG
-- [ ] Create `chat-ui/src/tools/event_rag.py`
-- [ ] Vector search over event log
-- [ ] Use pgvector for similarity search
-- [ ] Return relevant events with reasoning
-- [ ] Test RAG queries
+#### 9.4.3 Deep Links to Grafana
+- [ ] Generate deep links to Grafana panels:
+  - [ ] Portfolio dashboard links
+  - [ ] Performance dashboard links
+  - [ ] Specific trade detail links
+  - [ ] Log panel links
+- [ ] Generate deep links to LangSmith:
+  - [ ] Trace links for LLM calls
+  - [ ] Prompt visibility links
+- [ ] Embed links in chat responses
+- [ ] Add "View in Grafana" buttons in portal
+- [ ] Add "View Trace" buttons linking to LangSmith
+- [ ] Test deep link navigation
 
-### 9.4 Tool 3: Portfolio State
-- [ ] Create `chat-ui/src/tools/portfolio.py`
-- [ ] Get current holdings, cash, exposure
-- [ ] Real-time queries
-- [ ] Test portfolio queries
-
-### 9.5 Tool 4: Performance Analytics
-- [ ] Create `chat-ui/src/tools/analytics.py`
-- [ ] Calculate Sharpe ratio
-- [ ] Calculate win rate
-- [ ] Calculate drawdown
-- [ ] Calculate alpha vs deposits
-- [ ] Time-based: today, week, month, all-time
-- [ ] Test analytics queries
-
-### 9.6 Tool 5: Control Commands
-- [ ] Create `chat-ui/src/tools/control.py`
-- [ ] Implement pause/resume trading
-- [ ] Implement run_cycle trigger
-- [ ] Implement trigger_eval
-- [ ] Require confirmation for destructive actions
-- [ ] Test control commands
-
-### 9.7 Tool 6: Pattern Analysis
-- [ ] Create `chat-ui/src/tools/patterns.py`
-- [ ] Which validator concerns predicted losses?
-- [ ] Win rate by confidence bucket
-- [ ] Optimal holding periods
-- [ ] Test pattern queries
-
-### 9.8 Agent Integration
-- [ ] Create `chat-ui/src/agent.py`
-- [ ] Integrate all 6 tools
-- [ ] Configure LLM agent
-- [ ] Message history persistence
-- [ ] Simple auth (API key)
-- [ ] Test full agent flow
+#### 9.4.4 Portal Features
+- [ ] Command line interface (chat input)
+- [ ] Recent queries history
+- [ ] Quick actions panel:
+  - [ ] System status
+  - [ ] Recent trades
+  - [ ] Portfolio summary
+  - [ ] Circuit breaker status
+- [ ] Navigation to Grafana dashboards
+- [ ] Navigation to LangSmith traces
+- [ ] Responsive design (mobile-friendly)
+- [ ] Test all portal features
 
 ---
 
 ## Phase 10: Evaluation Framework
 
-### 10.1 LangSmith Integration
-- [ ] Add LangSmith dependencies to `pyproject.toml`
-- [ ] Configure LangSmith API key
-- [ ] Set up tracing for all LLM calls
-- [ ] Test tracing works
+**Note**: LangSmith integration is now part of Phase 9.3. This phase focuses on eval datasets and testing.
+
+### 10.1 LangSmith Eval Integration
+- [ ] Use LangSmith for eval tracking (configured in Phase 9.3)
+- [ ] Set up eval projects in LangSmith
+- [ ] Link evals to traces
+- [ ] Test eval tracking
 
 ### 10.2 Eval Datasets
 - [ ] Create `evals/datasets/` directory
@@ -540,7 +670,8 @@
 - [ ] Win rate > 50%
 - [ ] No losses > 20%
 - [ ] All circuit breakers tested
-- [ ] Chat UI functional
+- [ ] Telegram bot query interface functional
+- [ ] Chainlit UI functional with dashboards and traceability
 - [ ] Evals passing
 
 ---
@@ -554,7 +685,8 @@
 - [ ] Hard constraints cannot be overridden
 - [ ] All LLM calls have retry logic
 - [ ] End-to-end pipeline executes
-- [ ] Chat UI functional
+- [ ] Telegram bot query interface functional
+- [ ] Chainlit UI functional with dashboards and traceability
 - [ ] Evals run and pass
 - [ ] Paper trading completed (2 weeks)
 - [ ] Ready to risk £500
@@ -572,16 +704,20 @@
 ## Dependencies
 
 - Phase 1 (pgvector) → Phase 4 (Vector Integration)
-- Phase 1 (pgvector) → Phase 9 (Chat UI RAG)
+- Phase 1 (pgvector) → Phase 9 (Ops Portal RAG)
 - Phase 2 (Discovery Foundation) → Phase 3 (Pickers)
 - Phase 3 (Pickers) → Phase 4 (Vector Integration)
 - Phase 3 (Pickers) → Phase 8 (Discovery Analysis)
-- Phase 4 (Vector Integration) → Phase 9 (Chat UI RAG)
+- Phase 4 (Vector Integration) → Phase 9 (Ops Portal RAG)
 - Phase 5 (Event Monitor) → Can run independently
 - Phase 6 (Auto-Resume) → Can run independently
-- Phase 7 (Alerts) → Phase 11 (Deployment)
+- Phase 7 (Alerts) → Phase 7.3 (Telegram Bot Queries) → Phase 11 (Deployment)
 - Phase 8 (Discovery Analysis) → Phase 12 (Discovery Production)
-- Phase 9 (Chat UI) → Phase 1 (pgvector) + Phase 4 (Vector Integration)
+- Phase 7.3 (Telegram Bot Queries) → Phase 9 (Ops Portal)
+- Phase 9 (Grafana) → Phase 11 (Deployment) - Prometheus required
+- Phase 9 (LangSmith) → Phase 9 (Ops Portal) - Tracing required
+- Phase 9 (Ops Portal) → Phase 1 (pgvector) + Phase 4 (Vector Integration) + Phase 9 (LangSmith)
+- Phase 10 (Evals) → Phase 9 (LangSmith) - Uses LangSmith for eval tracking
 - Phase 10 (Evals) → Can run in parallel
 - Phase 11 (Deployment) → Phase 14 (Paper Trading)
 - Phase 12 (Discovery Production) → Phase 13 (S&P 500 & Sentiment)

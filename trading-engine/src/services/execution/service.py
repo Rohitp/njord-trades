@@ -223,18 +223,23 @@ class ExecutionService:
                     state, signal, decision, execution_result, cached_positions
                 )
                 
-                # Send position change alert
+                # Send position change alert (only for significant trades - gated by severity rules)
                 try:
                     from src.services.alerts.service import AlertService
                     
                     alert_service = AlertService()
-                    await alert_service.send_position_change_alert(
+                    total_value = (execution_result.fill_price or 0.0) * execution_result.quantity
+                    alert_sent = await alert_service.send_position_change_alert(
                         symbol=signal.symbol,
                         action=signal.action.value,
                         quantity=execution_result.quantity,
                         price=execution_result.fill_price or 0.0,
-                        total_value=(execution_result.fill_price or 0.0) * execution_result.quantity,
+                        total_value=total_value,
                     )
+                    if alert_sent:
+                        log.debug("position_change_alert_sent", symbol=signal.symbol, total_value=total_value)
+                    else:
+                        log.debug("position_change_alert_skipped", symbol=signal.symbol, total_value=total_value, reason="below_threshold")
                 except Exception as e:
                     # Don't fail trade execution if alert fails
                     log.error("position_change_alert_failed", error=str(e), exc_info=True)

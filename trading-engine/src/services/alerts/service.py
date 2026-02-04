@@ -115,9 +115,13 @@ class AlertService:
         quantity: int,
         price: float,
         total_value: float,
+        min_alert_value: float | None = None,
     ) -> bool:
         """
         Send alert for significant position changes.
+        
+        Only sends alerts for trades above a minimum value threshold (severity gating).
+        This prevents alert spam for small routine trades.
         
         Args:
             symbol: Stock symbol
@@ -125,10 +129,18 @@ class AlertService:
             quantity: Number of shares
             price: Price per share
             total_value: Total trade value
+            min_alert_value: Minimum trade value to trigger alert (defaults to config)
             
         Returns:
-            True if alert was sent successfully
+            True if alert was sent successfully, False if below threshold
         """
+        from src.config import settings
+        
+        # Severity gating: only alert on significant trades
+        threshold = min_alert_value or settings.alerts.min_position_change_alert_value
+        if threshold > 0 and total_value < threshold:
+            # Trade is below threshold - don't send alert
+            return False
         title = f"Position {action}: {symbol}"
         
         message = f"""

@@ -140,6 +140,10 @@ class AlertSettings(BaseSettings):
     email_from: str = ""
     email_to: str = ""
     aws_region: str = "us-east-1"
+    min_position_change_alert_value: float = Field(
+        default=1000.0,
+        description="Minimum trade value ($) to trigger position change alert. Trades below this threshold won't send alerts.",
+    )
 
 
 class EmbeddingSettings(BaseSettings):
