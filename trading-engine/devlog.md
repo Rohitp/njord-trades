@@ -532,6 +532,39 @@ uv run pytest tests/test_services/test_embeddings.py -v
 
 ---
 
+## Phase 3: Pickers Implementation (IN PROGRESS)
+
+**Status**: IN PROGRESS
+
+#### 3.1 MetricPicker ✓
+- [x] Created `src/services/discovery/pickers/metric.py`
+- [x] Implemented volume filter (min volume threshold)
+- [x] Implemented spread filter (max spread threshold)
+- [x] Created unit tests (`tests/test_services/test_discovery_pickers.py`)
+
+**Files Created**:
+- `src/services/discovery/pickers/metric.py` - MetricPicker implementation
+- `tests/test_services/test_discovery_pickers.py` - Unit tests
+
+**Files Modified**:
+- `src/services/discovery/pickers/__init__.py` - Export MetricPicker
+
+**Features**:
+- Volume filter: Minimum daily volume threshold (default: 1M shares)
+- Spread filter: Maximum bid-ask spread percentage (default: 1%)
+- Market cap and beta filters: Placeholder (requires Alpaca fundamentals API)
+- Binary scoring: Pass (score=1.0) or fail (excluded)
+- Uses AlpacaAssetSource to fetch tradable symbols
+- Uses MarketDataService for quote data
+
+**Testing**:
+```bash
+# Run picker tests
+uv run pytest tests/test_services/test_discovery_pickers.py -v
+```
+
+---
+
 ## TODO: Symbol Discovery System
 
 **Status**: PLANNED
