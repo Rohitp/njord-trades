@@ -189,3 +189,55 @@ class TestCircuitBreakerResumeEndpoint:
         assert data["success"] is False
         assert "not active" in data["message"].lower() or "conditions are not met" in data["message"].lower()
 
+    def test_send_test_alert(self, client: TestClient, mock_db_session: AsyncSession):
+        """Test the test alert endpoint."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        # Mock AlertService - patch where it's imported (inside the function)
+        with patch("src.services.alerts.service.AlertService") as mock_alert_class:
+            mock_alert_service = MagicMock()
+            mock_alert_service.send_test_alert = AsyncMock(return_value=True)
+            mock_alert_class.return_value = mock_alert_service
+
+            response = client.post("/api/system/alerts/test")
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert "sent successfully" in data["message"].lower()
+            mock_alert_service.send_test_alert.assert_called_once()
+
+    def test_send_test_alert_failure(self, client: TestClient, mock_db_session: AsyncSession):
+        """Test the test alert endpoint when alert fails."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        # Mock AlertService to fail - patch where it's imported (inside the function)
+        with patch("src.services.alerts.service.AlertService") as mock_alert_class:
+            mock_alert_service = MagicMock()
+            mock_alert_service.send_test_alert = AsyncMock(return_value=False)
+            mock_alert_class.return_value = mock_alert_service
+
+            response = client.post("/api/system/alerts/test")
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is False
+            assert "failed" in data["message"].lower()
+
+    def test_send_test_alert_exception(self, client: TestClient, mock_db_session: AsyncSession):
+        """Test the test alert endpoint when exception occurs."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        # Mock AlertService to raise exception - patch where it's imported (inside the function)
+        with patch("src.services.alerts.service.AlertService") as mock_alert_class:
+            mock_alert_service = MagicMock()
+            mock_alert_service.send_test_alert = AsyncMock(side_effect=Exception("Test error"))
+            mock_alert_class.return_value = mock_alert_service
+
+            response = client.post("/api/system/alerts/test")
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is False
+            assert "error" in data["message"].lower()
+

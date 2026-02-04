@@ -169,6 +169,39 @@ class CircuitBreakerService:
 
         log.error("circuit_breaker_activated", reason=reason)
 
+        # Send alert
+        try:
+            from src.services.alerts.service import AlertService
+            
+            alert_service = AlertService()
+            
+            # Extract drawdown or consecutive losses from reason
+            drawdown_pct = None
+            consecutive_losses = None
+            
+            if "drawdown" in reason.lower():
+                # Try to extract drawdown percentage from reason
+                import re
+                match = re.search(r'(\d+\.?\d*)%', reason)
+                if match:
+                    drawdown_pct = float(match.group(1))
+            
+            if "consecutive" in reason.lower():
+                # Try to extract consecutive losses count
+                import re
+                match = re.search(r'(\d+)\s+consecutive', reason)
+                if match:
+                    consecutive_losses = int(match.group(1))
+            
+            await alert_service.send_circuit_breaker_alert(
+                reason=reason,
+                drawdown_pct=drawdown_pct,
+                consecutive_losses=consecutive_losses,
+            )
+        except Exception as e:
+            # Don't fail circuit breaker activation if alert fails
+            log.error("circuit_breaker_alert_failed", error=str(e), exc_info=True)
+
     async def reset(self, reason: str = "Manual reset") -> bool:
         """
         Manually reset the circuit breaker.
@@ -270,6 +303,28 @@ class CircuitBreakerService:
                 reason=resume_reason,
                 note="Manual approval required via API to resume trading",
             )
+            
+            # Send alert
+            try:
+                from src.services.alerts.service import AlertService
+                
+                alert_service = AlertService()
+                
+                # Extract drawdown if applicable
+                drawdown_pct = None
+                if "drawdown" in resume_reason.lower():
+                    import re
+                    match = re.search(r'(\d+\.?\d*)%', resume_reason)
+                    if match:
+                        drawdown_pct = float(match.group(1))
+                
+                await alert_service.send_auto_resume_conditions_met_alert(
+                    resume_reason=resume_reason,
+                    drawdown_pct=drawdown_pct,
+                )
+            except Exception as e:
+                # Don't fail condition check if alert fails
+                log.error("auto_resume_alert_failed", error=str(e), exc_info=True)
         
         return conditions_met
 

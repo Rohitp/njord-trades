@@ -1736,4 +1736,71 @@ Uses existing config values:
 
 ---
 
-*Last updated: 2026-02-04 (Phase 6: Circuit Breaker Auto-Resume complete)*
+---
+
+## Phase 7: Alert System (IN PROGRESS)
+
+**Status**: IN PROGRESS | Telegram integration complete, Email pending
+
+### Overview
+
+Implemented Telegram-based alert system for real-time notifications. Alerts are sent for circuit breaker activations, auto-resume conditions, position changes, and system errors.
+
+### Implementation Details
+
+**7.1 Telegram Integration** ✓:
+- Created `TelegramAlertProvider` with retry logic and error handling
+- Supports HTML formatting and emoji-based severity indicators
+- Configurable via `ALERT_TELEGRAM_BOT_TOKEN` and `ALERT_TELEGRAM_CHAT_ID`
+- Added test endpoint: `POST /api/system/alerts/test`
+
+**7.3 Alert Service** ✓:
+- Created `AlertService` with alert templates for:
+  - Circuit breaker activation (error severity, always notifies)
+  - Auto-resume conditions met (info severity, always notifies)
+  - Position changes (info severity, silent notifications)
+  - Daily P&L summary (info/warning severity, silent)
+  - System errors (error severity, always notifies)
+  - Test alerts
+
+**Integration Points**:
+- Circuit breaker service: Sends alerts on activation and when auto-resume conditions are met
+- Execution service: Sends alerts on successful trade execution (position changes)
+- API endpoint: Test alert endpoint for verifying configuration
+
+### Files Created
+
+- `src/services/alerts/__init__.py` - Package exports
+- `src/services/alerts/telegram.py` - Telegram bot client
+- `src/services/alerts/service.py` - Alert routing and templates
+- `tests/unit/services/test_alerts.py` - Unit tests
+
+### Files Modified
+
+- `src/services/circuit_breaker.py` - Added alert calls on activation and auto-resume
+- `src/services/execution/service.py` - Added position change alerts
+- `src/api/routers/system.py` - Added test alert endpoint
+
+### Configuration
+
+```bash
+ALERT_TELEGRAM_BOT_TOKEN=your_bot_token_here
+ALERT_TELEGRAM_CHAT_ID=-1001234567890  # Channel ID (negative for channels)
+```
+
+### Testing
+
+```bash
+# Test Telegram configuration
+curl -X POST http://localhost:8000/api/system/alerts/test
+```
+
+### Next Steps
+
+- ⚠️ **TODO**: Implement email alerts (Phase 7.2) - AWS SES integration
+- ⚠️ **TODO**: Add daily P&L summary background job (runs at end of trading day)
+- ⚠️ **TODO**: Add system error alert integration into global error handlers
+
+---
+
+*Last updated: 2026-02-04 (Phase 7.1 & 7.3: Telegram alerts complete)*

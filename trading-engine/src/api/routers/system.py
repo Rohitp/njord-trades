@@ -254,3 +254,36 @@ async def enable_trading(
         message += " Note: Circuit breaker is still active."
 
     return {"success": True, "message": message}
+
+
+@router.post("/alerts/test")
+async def send_test_alert(
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Send a test alert to verify Telegram configuration.
+    
+    Returns success status and any error messages.
+    """
+    try:
+        from src.services.alerts.service import AlertService
+        
+        alert_service = AlertService()
+        success = await alert_service.send_test_alert()
+        
+        if success:
+            return {
+                "success": True,
+                "message": "Test alert sent successfully. Check your Telegram channel.",
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Failed to send test alert. Check Telegram configuration.",
+            }
+    except Exception as e:
+        log.error("test_alert_failed", error=str(e), exc_info=True)
+        return {
+            "success": False,
+            "message": f"Error sending test alert: {str(e)}",
+        }

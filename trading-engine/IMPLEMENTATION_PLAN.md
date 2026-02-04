@@ -184,14 +184,15 @@
 
 ---
 
-## Phase 7: Alert System
+## Phase 7: Alert System (IN PROGRESS)
 
-### 7.1 Telegram Integration
-- [ ] Create `src/services/alerts/__init__.py`
-- [ ] Create `src/services/alerts/telegram.py`
-- [ ] Implement Telegram bot client
-- [ ] Create alert templates
-- [ ] Test message delivery
+### 7.1 Telegram Integration ✓
+- [x] Create `src/services/alerts/__init__.py`
+- [x] Create `src/services/alerts/telegram.py`
+- [x] Implement Telegram bot client with retry logic
+- [x] Create alert templates (HTML formatting, emojis)
+- [x] Test message delivery via API endpoint
+- [x] Add `POST /api/system/alerts/test` endpoint
 
 ### 7.2 Email Integration
 - [ ] Create `src/services/alerts/email.py`
@@ -199,15 +200,19 @@
 - [ ] Create email templates
 - [ ] Test email delivery
 
-### 7.3 Alert Service
-- [ ] Create `src/services/alerts/service.py`
-- [ ] Implement alert routing (Telegram vs Email)
-- [ ] Add alert triggers:
-  - Circuit breaker activation
-  - Large position changes
-  - Daily P&L summary
-  - System errors
-- [ ] Test all alert types
+### 7.3 Alert Service ✓
+- [x] Create `src/services/alerts/service.py`
+- [x] Implement alert routing (Telegram provider)
+- [x] Add alert triggers:
+  - Circuit breaker activation ✓
+  - Position changes (on trade execution) ✓
+  - Auto-resume conditions met ✓
+  - System errors (template ready)
+  - Daily P&L summary (template ready, needs background job)
+- [x] Integrate into circuit breaker service
+- [x] Integrate into execution service (position changes)
+- [x] Write unit tests for Telegram client and alert service
+- [ ] Add daily P&L summary background job (can be done in Phase 8 or later)
 
 ---
 

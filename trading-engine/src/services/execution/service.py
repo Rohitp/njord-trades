@@ -222,6 +222,23 @@ class ExecutionService:
                 execution_result.trade_id = await self._persist_trade(
                     state, signal, decision, execution_result, cached_positions
                 )
+                
+                # Send position change alert
+                try:
+                    from src.services.alerts.service import AlertService
+                    
+                    alert_service = AlertService()
+                    await alert_service.send_position_change_alert(
+                        symbol=signal.symbol,
+                        action=signal.action.value,
+                        quantity=execution_result.quantity,
+                        price=execution_result.fill_price or 0.0,
+                        total_value=(execution_result.fill_price or 0.0) * execution_result.quantity,
+                    )
+                except Exception as e:
+                    # Don't fail trade execution if alert fails
+                    log.error("position_change_alert_failed", error=str(e), exc_info=True)
+                    
             except Exception as e:
                 # Log orphaned order if broker succeeded but DB failed
                 if execution_result.broker_order_id:
