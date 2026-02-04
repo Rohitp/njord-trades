@@ -237,16 +237,24 @@ class TestFuzzyPicker:
             
             mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
             
-            quote = MagicMock()
-            quote.volume = 5_000_000
-            quote.price = 150.0
+            from src.services.market_data.provider import Quote, TechnicalIndicators
             
-            indicators = MagicMock()
-            indicators.price = 155.0
-            indicators.sma_20 = 150.0
-            indicators.rsi_14 = 55.0
-            indicators.volume_avg_20 = 3_000_000
-            indicators.volume_ratio = 1.67
+            quote = Quote(
+                symbol="AAPL",
+                price=150.0,
+                volume=5_000_000,
+            )
+            
+            indicators = TechnicalIndicators(
+                symbol="AAPL",
+                price=155.0,
+                sma_20=150.0,
+                sma_50=None,
+                sma_200=None,
+                rsi_14=55.0,
+                volume_avg_20=3_000_000,
+                volume_ratio=1.67,
+            )
             
             mock_market.return_value.get_quote = AsyncMock(return_value=quote)
             mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
@@ -302,16 +310,24 @@ class TestFuzzyPicker:
             
             mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
             
-            quote = MagicMock()
-            quote.volume = 5_000_000
-            quote.price = 150.0
+            from src.services.market_data.provider import Quote, TechnicalIndicators
             
-            indicators = MagicMock()
-            indicators.price = 155.0
-            indicators.sma_20 = 150.0
-            indicators.rsi_14 = 55.0
-            indicators.volume_avg_20 = 3_000_000
-            indicators.volume_ratio = 1.67
+            quote = Quote(
+                symbol="AAPL",
+                price=150.0,
+                volume=5_000_000,
+            )
+            
+            indicators = TechnicalIndicators(
+                symbol="AAPL",
+                price=155.0,
+                sma_20=150.0,
+                sma_50=None,
+                sma_200=None,
+                rsi_14=55.0,
+                volume_avg_20=3_000_000,
+                volume_ratio=1.67,
+            )
             
             mock_market.return_value.get_quote = AsyncMock(return_value=quote)
             mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
@@ -356,16 +372,24 @@ class TestFuzzyPicker:
             
             mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
             
-            quote = MagicMock()
-            quote.volume = 5_000_000
-            quote.price = 150.0
+            from src.services.market_data.provider import Quote, TechnicalIndicators
             
-            indicators = MagicMock()
-            indicators.price = 155.0
-            indicators.sma_20 = 150.0
-            indicators.rsi_14 = 55.0
-            indicators.volume_avg_20 = 3_000_000
-            indicators.volume_ratio = 1.67
+            quote = Quote(
+                symbol="AAPL",
+                price=150.0,
+                volume=5_000_000,
+            )
+            
+            indicators = TechnicalIndicators(
+                symbol="AAPL",
+                price=155.0,
+                sma_20=150.0,
+                sma_50=None,
+                sma_200=None,
+                rsi_14=55.0,
+                volume_avg_20=3_000_000,
+                volume_ratio=1.67,
+            )
             
             mock_market.return_value.get_quote = AsyncMock(return_value=quote)
             mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
@@ -395,16 +419,24 @@ class TestFuzzyPicker:
             
             mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
             
-            quote = MagicMock()
-            quote.volume = 5_000_000
-            quote.price = 150.0
+            from src.services.market_data.provider import Quote, TechnicalIndicators
             
-            indicators = MagicMock()
-            indicators.price = 155.0
-            indicators.sma_20 = 150.0
-            indicators.rsi_14 = 55.0
-            indicators.volume_avg_20 = 3_000_000
-            indicators.volume_ratio = 1.67
+            quote = Quote(
+                symbol="AAPL",
+                price=150.0,
+                volume=5_000_000,
+            )
+            
+            indicators = TechnicalIndicators(
+                symbol="AAPL",
+                price=155.0,
+                sma_20=150.0,
+                sma_50=None,
+                sma_200=None,
+                rsi_14=55.0,
+                volume_avg_20=3_000_000,
+                volume_ratio=1.67,
+            )
             
             mock_market.return_value.get_quote = AsyncMock(return_value=quote)
             mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
@@ -454,16 +486,24 @@ class TestFuzzyPicker:
             
             mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
             
-            quote = MagicMock()
-            quote.volume = 5_000_000
-            quote.price = 150.0
+            from src.services.market_data.provider import Quote, TechnicalIndicators
             
-            indicators = MagicMock()
-            indicators.price = 155.0
-            indicators.sma_20 = 150.0
-            indicators.rsi_14 = 55.0
-            indicators.volume_avg_20 = 3_000_000
-            indicators.volume_ratio = 1.67
+            quote = Quote(
+                symbol="AAPL",
+                price=150.0,
+                volume=5_000_000,
+            )
+            
+            indicators = TechnicalIndicators(
+                symbol="AAPL",
+                price=155.0,
+                sma_20=150.0,
+                sma_50=None,
+                sma_200=None,
+                rsi_14=55.0,
+                volume_avg_20=3_000_000,
+                volume_ratio=1.67,
+            )
             
             mock_market.return_value.get_quote = AsyncMock(return_value=quote)
             mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
@@ -505,16 +545,24 @@ class TestFuzzyPicker:
             
             mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
             
-            quote = MagicMock()
-            quote.volume = 5_000_000
-            quote.price = 150.0
+            from src.services.market_data.provider import Quote, TechnicalIndicators
             
-            indicators = MagicMock()
-            indicators.price = 155.0
-            indicators.sma_20 = 150.0
-            indicators.rsi_14 = 55.0
-            indicators.volume_avg_20 = 3_000_000
-            indicators.volume_ratio = 1.67
+            quote = Quote(
+                symbol="AAPL",
+                price=150.0,
+                volume=5_000_000,
+            )
+            
+            indicators = TechnicalIndicators(
+                symbol="AAPL",
+                price=155.0,
+                sma_20=150.0,
+                sma_50=None,
+                sma_200=None,
+                rsi_14=55.0,
+                volume_avg_20=3_000_000,
+                volume_ratio=1.67,
+            )
             
             mock_market.return_value.get_quote = AsyncMock(return_value=quote)
             mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
@@ -656,7 +704,8 @@ class TestLLMPicker:
         with patch("src.services.discovery.pickers.llm.AlpacaAssetSource") as mock_source, \
              patch("src.services.discovery.pickers.llm.retry_llm_call") as mock_llm:
             
-            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            # Include both symbols in candidate list so they don't get filtered
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL", "MSFT"])
             
             # Mock LLM response with out-of-range scores
             mock_response = MagicMock()

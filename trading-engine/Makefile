@@ -28,10 +28,16 @@ migrate-down:
 
 # Testing
 test:
+	uv sync --extra dev
 	uv run pytest
 
 test-cov:
+	uv sync --extra dev
 	uv run pytest --cov=src --cov-report=term-missing
+
+test-fast:
+	uv sync --extra dev
+	uv run pytest -m "not slow"
 
 # Linting
 lint:

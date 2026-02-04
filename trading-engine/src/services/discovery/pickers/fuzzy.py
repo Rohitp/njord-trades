@@ -256,19 +256,19 @@ class FuzzyPicker(SymbolPicker):
         # Build context text similar to trade embedding format
         context_parts = [f"Symbol: {symbol}"]
 
-        if quote.price:
-            context_parts.append(f"Price: ${quote.price:.2f}")
+        if quote.price and isinstance(quote.price, (int, float)):
+            context_parts.append(f"Price: ${float(quote.price):.2f}")
 
-        if indicators.rsi_14 is not None:
-            context_parts.append(f"RSI: {indicators.rsi_14:.1f}")
-        if indicators.sma_20 is not None:
-            context_parts.append(f"SMA_20: ${indicators.sma_20:.2f}")
-        if indicators.sma_50 is not None:
-            context_parts.append(f"SMA_50: ${indicators.sma_50:.2f}")
-        if indicators.sma_200 is not None:
-            context_parts.append(f"SMA_200: ${indicators.sma_200:.2f}")
-        if indicators.volume_ratio is not None:
-            context_parts.append(f"Volume ratio: {indicators.volume_ratio:.2f}x")
+        if indicators.rsi_14 is not None and isinstance(indicators.rsi_14, (int, float)):
+            context_parts.append(f"RSI: {float(indicators.rsi_14):.1f}")
+        if indicators.sma_20 is not None and isinstance(indicators.sma_20, (int, float)):
+            context_parts.append(f"SMA_20: ${float(indicators.sma_20):.2f}")
+        if indicators.sma_50 is not None and isinstance(indicators.sma_50, (int, float)):
+            context_parts.append(f"SMA_50: ${float(indicators.sma_50):.2f}")
+        if indicators.sma_200 is not None and isinstance(indicators.sma_200, (int, float)):
+            context_parts.append(f"SMA_200: ${float(indicators.sma_200):.2f}")
+        if indicators.volume_ratio is not None and isinstance(indicators.volume_ratio, (int, float)):
+            context_parts.append(f"Volume ratio: {float(indicators.volume_ratio):.2f}x")
 
         context_text = " | ".join(context_parts)
 

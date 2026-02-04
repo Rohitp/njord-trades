@@ -94,13 +94,15 @@ class TestTradeEmbeddingService:
 
         mock_session = MagicMock()
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none = lambda: existing_embedding
+        # The code calls scalar_one_or_none() to check, then scalar_one() if it exists
+        mock_result.scalar_one_or_none.return_value = existing_embedding
+        mock_result.scalar_one.return_value = existing_embedding
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         service = TradeEmbeddingService()
         result = await service.embed_trade(trade, session=mock_session)
 
-        assert result == existing_embedding
+        assert result is existing_embedding
         mock_session.add.assert_not_called()
 
     @pytest.mark.asyncio

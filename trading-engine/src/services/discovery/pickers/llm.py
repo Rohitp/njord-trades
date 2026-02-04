@@ -152,8 +152,8 @@ class LLMPicker(SymbolPicker):
                 candidate_symbols = context["candidate_symbols"][: self.max_candidates]
             else:
                 # Fetch all tradable stocks
-                assets = await self.asset_source.get_stocks()
-                candidate_symbols = [a.symbol for a in assets][: self.max_candidates]
+                candidate_symbols = await self.asset_source.get_stocks()
+                candidate_symbols = candidate_symbols[: self.max_candidates]
 
             if not candidate_symbols:
                 log.warning("llm_picker_no_candidates")
