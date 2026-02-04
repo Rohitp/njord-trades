@@ -25,7 +25,7 @@ from uuid import UUID, uuid4
 
 
 def _parse_uuid(value: str | UUID | None) -> UUID | None:
-    """Convert string to UUID if needed."""
+    """Convert string to UUID if needed. Returns None if input is None."""
     if value is None:
         return None
     if isinstance(value, UUID):
@@ -33,8 +33,26 @@ def _parse_uuid(value: str | UUID | None) -> UUID | None:
     return UUID(value)
 
 
+def _require_uuid(value: str | UUID | None, field_name: str) -> UUID:
+    """
+    Parse UUID, raising ValueError if missing.
+
+    Use for foreign keys (signal_id) where a missing value breaks auditability.
+    """
+    if value is None:
+        raise ValueError(f"Required field '{field_name}' is missing")
+    if isinstance(value, UUID):
+        return value
+    return UUID(value)
+
+
 def _parse_datetime(value: str | datetime | None) -> datetime:
-    """Convert ISO string to datetime if needed."""
+    """
+    Convert ISO string to datetime if needed.
+
+    Defaults to now() for missing values. This is intentional for timestamps
+    that are set during object creation (not foreign references).
+    """
     if value is None:
         return datetime.now()
     if isinstance(value, datetime):
@@ -96,10 +114,14 @@ class Signal:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Deserialize from dict (e.g., LangGraph output)."""
+        # Handle action field: could be string, enum, or missing
+        action_raw = data.get("action", SignalAction.HOLD)
+        action = SignalAction(action_raw) if isinstance(action_raw, str) else action_raw
+
         return cls(
             id=_parse_uuid(data.get("id")) or uuid4(),
             symbol=data.get("symbol", ""),
-            action=SignalAction(data["action"]) if isinstance(data.get("action"), str) else data.get("action", SignalAction.HOLD),
+            action=action,
             confidence=data.get("confidence", 0.0),
             proposed_quantity=data.get("proposed_quantity", 0),
             reasoning=data.get("reasoning", ""),
@@ -139,7 +161,7 @@ class RiskAssessment:
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Deserialize from dict (e.g., LangGraph output)."""
         return cls(
-            signal_id=_parse_uuid(data.get("signal_id")) or uuid4(),
+            signal_id=_require_uuid(data.get("signal_id"), "signal_id"),
             approved=data.get("approved", False),
             adjusted_quantity=data.get("adjusted_quantity", 0),
             risk_score=data.get("risk_score", 0.0),
@@ -175,7 +197,7 @@ class Validation:
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Deserialize from dict (e.g., LangGraph output)."""
         return cls(
-            signal_id=_parse_uuid(data.get("signal_id")) or uuid4(),
+            signal_id=_require_uuid(data.get("signal_id"), "signal_id"),
             approved=data.get("approved", False),
             concerns=data.get("concerns", []),
             suggestions=data.get("suggestions", []),
@@ -209,11 +231,10 @@ class FinalDecision:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Deserialize from dict (e.g., LangGraph output)."""
-        decision = data.get("decision", Decision.DO_NOT_EXECUTE)
-        if isinstance(decision, str):
-            decision = Decision(decision)
+        decision_raw = data.get("decision", Decision.DO_NOT_EXECUTE)
+        decision = Decision(decision_raw) if isinstance(decision_raw, str) else decision_raw
         return cls(
-            signal_id=_parse_uuid(data.get("signal_id")) or uuid4(),
+            signal_id=_require_uuid(data.get("signal_id"), "signal_id"),
             decision=decision,
             final_quantity=data.get("final_quantity", 0),
             confidence=data.get("confidence", 0.0),
@@ -251,9 +272,9 @@ class ExecutionResult:
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Deserialize from dict (e.g., LangGraph output)."""
         return cls(
-            signal_id=_parse_uuid(data.get("signal_id")) or uuid4(),
+            signal_id=_require_uuid(data.get("signal_id"), "signal_id"),
             success=data.get("success", False),
-            trade_id=_parse_uuid(data.get("trade_id")),
+            trade_id=_parse_uuid(data.get("trade_id")),  # Optional - may not exist if execution failed
             symbol=data.get("symbol", ""),
             action=data.get("action", ""),
             quantity=data.get("quantity", 0),
@@ -429,7 +450,7 @@ class TradingState:
             portfolio = PortfolioSnapshot()
 
         return cls(
-            cycle_id=_parse_uuid(data.get("cycle_id")) or uuid4(),
+            cycle_id=_require_uuid(data.get("cycle_id"), "cycle_id"),
             cycle_type=data.get("cycle_type", "scheduled"),
             trigger_symbol=data.get("trigger_symbol"),
             started_at=_parse_datetime(data.get("started_at")),

@@ -271,28 +271,72 @@ Provider is inferred from model name (`claude-*` → Anthropic, `gpt-*` → Open
 
 ---
 
+## Completed Features
+
+### Trade Execution ✓
+
+**Status**: IMPLEMENTED
+
+Execution service submits orders to broker when `execute=true` is passed to `/cycles/run`.
+
+```
+Files created:
+- src/services/execution/broker.py       # Abstract Broker protocol
+- src/services/execution/alpaca_broker.py # Alpaca API implementation
+- src/services/execution/paper_broker.py  # Local simulation for testing
+- src/services/execution/service.py       # ExecutionService orchestrator
+```
+
+**API Usage**:
+```bash
+# Dry run (default) - no trades executed
+curl -X POST http://localhost:8000/cycles/run \
+  -H "Content-Type: application/json" \
+  -d '{"symbols": ["AAPL"]}'
+
+# Live execution - execute EXECUTE decisions via broker
+curl -X POST http://localhost:8000/cycles/run \
+  -H "Content-Type: application/json" \
+  -d '{"symbols": ["AAPL"], "execute": true}'
+```
+
+**Broker Selection**:
+- If `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` are set → AlpacaBroker
+- Otherwise → PaperBroker (local simulation)
+
+---
+
 ## Future Extensions
 
-### 1. Trade Execution (High Priority)
+### 1. Scheduled Execution
 
-**Current**: Pipeline ends at MetaAgent decision
-**Needed**: Execute trades via broker API
+**Current**: Manual API trigger only
+**Needed**: Run at configured times (11:00, 14:30 EST)
+
+```
+Options:
+- APScheduler integration in FastAPI lifespan
+- External cron calling /cycles/run
+- Celery beat for distributed scheduling
+
+Files to create:
+- src/scheduler/jobs.py           # Job definitions
+- src/scheduler/triggers.py       # Market hours logic
+```
+
+### 2. Event-Triggered Cycles
+
+**Current**: Manual event cycle trigger
+**Needed**: Auto-detect >5% price moves
 
 ```
 Files to create:
-- src/services/execution/broker.py      # Abstract broker protocol
-- src/services/execution/alpaca.py      # Alpaca implementation
-- src/services/execution/paper.py       # Paper trading for testing
-- src/agents/executor.py                # Execution agent (optional)
-
-Changes:
-- Add "executor" node to graph after meta_agent
-- Or call broker directly from runner after getting EXECUTE decisions
-- Update Position and PortfolioState after fills
-- Record TradeExecuted events
+- src/services/event_monitor.py   # Price monitoring service
+- Background task polling quotes
+- Trigger run_event_cycle on threshold breach
 ```
 
-### 2. OpenTelemetry Tracing
+### 3. OpenTelemetry Tracing
 
 **Current**: Correlation IDs in logs
 **Needed**: Full distributed tracing with spans
@@ -310,35 +354,7 @@ Changes:
 - trace_id already flows end-to-end
 ```
 
-### 3. Scheduled Execution
-
-**Current**: Manual API trigger only
-**Needed**: Run at configured times (11:00, 14:30 EST)
-
-```
-Options:
-- APScheduler integration in FastAPI lifespan
-- External cron calling /cycles/run
-- Celery beat for distributed scheduling
-
-Files to create:
-- src/scheduler/jobs.py           # Job definitions
-- src/scheduler/triggers.py       # Market hours logic
-```
-
-### 4. Event-Triggered Cycles
-
-**Current**: Manual event cycle trigger
-**Needed**: Auto-detect >5% price moves
-
-```
-Files to create:
-- src/services/event_monitor.py   # Price monitoring service
-- Background task polling quotes
-- Trigger run_event_cycle on threshold breach
-```
-
-### 5. LLM-Powered Observability Querying
+### 4. LLM-Powered Observability Querying
 
 **Current**: Raw logs and Prometheus
 **Needed**: Natural language queries over logs/metrics
@@ -350,7 +366,7 @@ Files to create:
 - RAG over events table for historical analysis
 ```
 
-### 6. Vector Store for Trade Memory
+### 5. Vector Store for Trade Memory
 
 **Current**: Events in PostgreSQL only
 **Needed**: Semantic search over past trades
@@ -363,7 +379,7 @@ Files to create:
 - "Similar setup failed 3 times" detection
 ```
 
-### 7. Circuit Breaker Auto-Resume
+### 6. Circuit Breaker Auto-Resume
 
 **Current**: Manual resume only
 **Needed**: Auto-resume when conditions met
@@ -375,7 +391,7 @@ Logic to add in runner.py:
 - If Sharpe > 0.3 for 7 days after Sharpe halt, resume
 ```
 
-### 8. Multi-Strategy Support
+### 7. Multi-Strategy Support
 
 **Current**: Single strategy
 **Needed**: Run multiple strategies with separate allocations
@@ -388,7 +404,7 @@ Changes:
 - Disable underperforming strategies independently
 ```
 
-### 9. Backtesting Framework
+### 8. Backtesting Framework
 
 **Current**: Live/paper only
 **Needed**: Test strategies on historical data
@@ -401,7 +417,7 @@ Files to create:
 - Performance metrics calculation
 ```
 
-### 10. Alert System
+### 9. Alert System
 
 **Current**: Logs only
 **Needed**: Discord/email alerts for key events

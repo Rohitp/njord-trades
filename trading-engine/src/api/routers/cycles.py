@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.connection import get_session
+from src.services.execution import ExecutionService
 from src.utils.logging import get_logger
 from src.workflows.runner import TradingCycleRunner
 from src.workflows.state import Decision, SignalAction
@@ -46,6 +47,10 @@ class RunCycleRequest(BaseModel):
     trigger_symbol: str | None = Field(
         default=None,
         description="For event cycles, the symbol that triggered the event.",
+    )
+    execute: bool = Field(
+        default=False,
+        description="If true, execute EXECUTE decisions via broker. Defaults to false (dry run).",
     )
 
 
@@ -98,6 +103,22 @@ class FinalDecisionResponse(BaseModel):
     reasoning: str
 
 
+class ExecutionResultResponse(BaseModel):
+    """Result of trade execution."""
+
+    signal_id: str
+    success: bool
+    trade_id: str | None = None
+    symbol: str
+    action: str
+    quantity: int
+    requested_price: float
+    fill_price: float | None = None
+    slippage: float | None = None
+    broker_order_id: str | None = None
+    error: str | None = None
+
+
 class CycleResultResponse(BaseModel):
     """Complete result of a trading cycle."""
 
@@ -114,12 +135,14 @@ class CycleResultResponse(BaseModel):
     risk_assessments: list[RiskAssessmentResponse]
     validations: list[ValidationResponse]
     final_decisions: list[FinalDecisionResponse]
+    execution_results: list[ExecutionResultResponse] = []
 
     # Summary
     total_signals: int
     approved_by_risk: int
     approved_by_validator: int
     execute_decisions: int
+    executed_trades: int = 0
 
     # Errors
     errors: list[dict[str, Any]]
@@ -163,6 +186,13 @@ async def run_trading_cycle(
             result = await runner.run_event_cycle(request.trigger_symbol, trace_id=trace_id)
         else:
             result = await runner.run_scheduled_cycle(request.symbols, trace_id=trace_id)
+
+        # Execute trades if requested
+        if request.execute and result.get_execute_decisions():
+            log.info("executing_trades", cycle_id=str(result.cycle_id))
+            executor = ExecutionService(db_session=db)
+            await executor.execute_decisions(result)
+
     except ValueError as e:
         # Circuit breaker or validation errors
         log.warning("cycle_rejected", error=str(e))
@@ -232,9 +262,26 @@ async def run_trading_cycle(
             )
             for fd in result.final_decisions
         ],
+        execution_results=[
+            ExecutionResultResponse(
+                signal_id=str(er.signal_id),
+                success=er.success,
+                trade_id=str(er.trade_id) if er.trade_id else None,
+                symbol=er.symbol,
+                action=er.action,
+                quantity=er.quantity,
+                requested_price=er.requested_price,
+                fill_price=er.fill_price,
+                slippage=er.slippage,
+                broker_order_id=er.broker_order_id,
+                error=er.error,
+            )
+            for er in result.execution_results
+        ],
         total_signals=len(result.signals),
         approved_by_risk=len([ra for ra in result.risk_assessments if ra.approved]),
         approved_by_validator=len([v for v in result.validations if v.approved]),
         execute_decisions=len(result.get_execute_decisions()),
+        executed_trades=len([er for er in result.execution_results if er.success]),
         errors=result.errors,
     )
