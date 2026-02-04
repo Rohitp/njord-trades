@@ -246,7 +246,9 @@ class TradingCycleRunner:
             raise ValueError(f"Expected dict from LangGraph, got {type(data).__name__}")
 
         try:
-            return TradingState.from_dict(data)
+            # Use strict_timestamps=False by default to allow loading historical data
+            # Set to True if you need to preserve original timestamps from archived events
+            return TradingState.from_dict(data, strict_timestamps=False)
         except (ValueError, TypeError, KeyError) as e:
             log.error("state_reconstruction_failed", error=str(e), data_keys=list(data.keys()))
             raise ValueError(f"Failed to reconstruct TradingState: {e}") from e

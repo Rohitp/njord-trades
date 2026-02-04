@@ -86,13 +86,28 @@ class ExecutionService:
             broker=self.broker.name,
         )
 
+        # Cache positions once at cycle level to reuse across all trades
+        # This avoids O(N²) queries when processing multiple trades
+        cached_positions: list[DBPosition] | None = None
+        if self.db_session is not None:
+            positions_stmt = select(DBPosition)
+            positions_result = await self.db_session.execute(positions_stmt)
+            cached_positions = positions_result.scalars().all()
+
         results = []
         for decision in execute_list:
-            result = await self._execute_single(state, decision)
+            result = await self._execute_single(state, decision, cached_positions)
             results.append(result)
 
             # Add to state
             state.execution_results.append(result)
+
+            # Refresh cached positions after each trade to reflect position changes
+            # (new positions created, positions deleted, quantities updated)
+            if self.db_session is not None and cached_positions is not None:
+                positions_stmt = select(DBPosition)
+                positions_result = await self.db_session.execute(positions_stmt)
+                cached_positions = positions_result.scalars().all()
 
         # Evaluate circuit breaker after all trades
         if self.db_session is not None:
@@ -115,6 +130,7 @@ class ExecutionService:
         self,
         state: TradingState,
         decision: FinalDecision,
+        cached_positions: list[DBPosition] | None = None,
     ) -> ExecutionResult:
         """Execute a single trading decision."""
         # Find the original signal
@@ -204,7 +220,7 @@ class ExecutionService:
         if self.db_session is not None and execution_result.success:
             try:
                 execution_result.trade_id = await self._persist_trade(
-                    state, signal, decision, execution_result
+                    state, signal, decision, execution_result, cached_positions
                 )
             except Exception as e:
                 # Log orphaned order if broker succeeded but DB failed
@@ -227,6 +243,7 @@ class ExecutionService:
         signal: Signal,
         decision: FinalDecision,
         result: ExecutionResult,
+        cached_positions: list[DBPosition] | None = None,
     ) -> UUID | None:
         """
         Persist trade to database.
@@ -273,8 +290,16 @@ class ExecutionService:
             # Update position (pass trade_id for CapitalEvent linking)
             capital_event = await self._update_position(signal, result, trade_value, trade_id)
 
-            # Update portfolio state
-            final_portfolio_value = await self._update_portfolio(signal, trade_value)
+            # Refresh positions cache AFTER position update to include new/deleted positions
+            # This ensures portfolio.total_value calculation uses current position state
+            # If cached_positions was provided, refresh it; otherwise query fresh
+            if cached_positions is not None:
+                positions_stmt = select(DBPosition)
+                positions_result = await self.db_session.execute(positions_stmt)
+                cached_positions = positions_result.scalars().all()
+
+            # Update portfolio state (pass refreshed cached positions)
+            final_portfolio_value = await self._update_portfolio(signal, trade_value, cached_positions)
 
             # Update CapitalEvent.balance_after if we created one
             if capital_event is not None and final_portfolio_value is not None:
@@ -405,9 +430,16 @@ class ExecutionService:
         self,
         signal: Signal,
         trade_value: float,
+        cached_positions: list[DBPosition] | None = None,
     ) -> float | None:
         """
         Update portfolio state in database.
+
+        Args:
+            signal: The trading signal
+            trade_value: Value of the trade
+            cached_positions: Optional cached positions list to avoid reselecting.
+                             If None, will query all positions.
 
         Returns:
             Final portfolio total_value after update, None if portfolio doesn't exist
@@ -436,9 +468,13 @@ class ExecutionService:
             portfolio.deployed_capital -= trade_value
 
         # Recalculate total value (cash + positions)
-        positions_stmt = select(DBPosition)
-        positions_result = await self.db_session.execute(positions_stmt)
-        positions = positions_result.scalars().all()
+        # Use cached positions if provided to avoid O(N²) reselection
+        if cached_positions is not None:
+            positions = cached_positions
+        else:
+            positions_stmt = select(DBPosition)
+            positions_result = await self.db_session.execute(positions_stmt)
+            positions = positions_result.scalars().all()
 
         portfolio.total_value = portfolio.cash + sum(p.current_value for p in positions)
 

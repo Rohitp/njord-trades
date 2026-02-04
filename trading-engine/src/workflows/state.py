@@ -73,12 +73,19 @@ def _parse_datetime(value: str | datetime | None, default: datetime | None = Non
     return datetime.fromisoformat(value)
 
 
-def _parse_datetime_optional(value: str | datetime | None) -> datetime:
+def _parse_datetime_optional(value: str | datetime | None, strict: bool = False) -> datetime:
     """
     Convert ISO string to datetime, defaulting to now() if missing.
 
     Use for timestamps that are set during object creation (not foreign references).
+
+    Args:
+        value: The value to parse
+        strict: If True, raise ValueError when missing. If False, default to now().
+                Set to True when loading historical data that must preserve original timestamps.
     """
+    if strict:
+        return _parse_datetime(value, default=None)  # Will raise if None
     return _parse_datetime(value, default=datetime.now())
 
 
@@ -154,16 +161,8 @@ class Signal:
             action = SignalAction.HOLD
 
         # Signal.id is used as foreign key by RiskAssessment, Validation, etc.
-        # If missing, generate new UUID but warn - downstream objects may not match
-        signal_id = _parse_uuid(data.get("id"))
-        if signal_id is None:
-            signal_id = uuid4()
-            log.warning(
-                "signal_id_missing_generated_new",
-                signal_id=str(signal_id),
-                symbol=data.get("symbol", "unknown"),
-                message="Signal.id was missing from dict, generated new UUID. Downstream objects may not match.",
-            )
+        # Must be present to maintain referential integrity - fail fast if missing
+        signal_id = _require_uuid(data.get("id"), "Signal.id")
 
         return cls(
             id=signal_id,
@@ -454,7 +453,7 @@ class TradingState:
         })
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Self:
+    def from_dict(cls, data: dict[str, Any], strict_timestamps: bool = False) -> Self:
         """
         Deserialize from dict (e.g., LangGraph output).
 
@@ -463,6 +462,9 @@ class TradingState:
 
         Args:
             data: Dictionary from LangGraph output
+            strict_timestamps: If True, raise ValueError when timestamps are missing.
+                             If False, default to now() for optional timestamps.
+                             Set to True when loading historical data that must preserve original timestamps.
 
         Returns:
             Fully reconstructed TradingState
@@ -514,7 +516,7 @@ class TradingState:
             cycle_id=_require_uuid(data.get("cycle_id"), "cycle_id"),
             cycle_type=data.get("cycle_type", "scheduled"),
             trigger_symbol=data.get("trigger_symbol"),
-            started_at=_parse_datetime_optional(data.get("started_at")),  # Optional - runner overwrites it
+            started_at=_parse_datetime_optional(data.get("started_at"), strict=strict_timestamps),  # Optional - runner overwrites it
             trace_id=data.get("trace_id"),
             symbols=data.get("symbols", []),
             portfolio_snapshot=portfolio,
