@@ -25,6 +25,7 @@ dependencies = [
     "prometheus-client>=0.24.1",
     "apscheduler>=3.10.0",
     "pytz>=2024.1",
+    "pgvector>=0.3.0",
 ]
 
 [project.optional-dependencies]
