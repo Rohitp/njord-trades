@@ -747,6 +747,47 @@ Symbol: AAPL | Action: BUY | Quantity: 5 | Price: $150.00 | Signal reasoning: RS
 uv run pytest tests/test_services/test_trade_embedding.py -v
 ```
 
+#### 4.2 Market Condition Embeddings ✓
+- [x] Created `src/services/embeddings/market_condition.py`
+- [x] Collect VIX, SPY trend, sector performance
+- [x] Format market context text
+- [x] Generate and store embeddings
+- [x] Created unit tests
+
+**Files Created**:
+- `src/services/embeddings/market_condition.py` - MarketConditionService
+- `tests/test_services/test_market_condition_embedding.py` - Unit tests
+
+**Features**:
+- **Market Data Collection**: Fetches VIX, SPY trend (vs SMA_200), and sector ETF performance
+- **Context Formatting**: Formats market conditions into readable text for embedding
+- **Similarity Search**: `find_similar_conditions()` method for finding similar market regimes
+- **Deduplication**: Skips embedding generation if one exists within 1 hour (prevents duplicates)
+- **Sector Tracking**: Tracks 11 major sector ETFs (XLK, XLF, XLE, XLV, etc.)
+
+**Market Data Collected**:
+- **VIX**: Volatility index (High >25, Moderate 15-25, Low <15)
+- **SPY Trend**: Price vs SMA_200, trend direction (Bullish/Bearish), percentage difference
+- **Sector Performance**: Current prices for 11 major sector ETFs
+
+**Context Text Format**:
+```
+VIX: 22.50 (Moderate volatility) | SPY: $450.00, Bullish trend (+2.27% vs SMA_200) | Sectors: Technology: $180.00, Financials: $40.00, ...
+```
+
+**Usage**:
+```python
+service = MarketConditionService()
+embedding = await service.embed_market_condition(timestamp=datetime.now(), session=session)
+# Can be called manually or by scheduled job
+```
+
+**Testing**:
+```bash
+# Run market condition embedding tests
+uv run pytest tests/test_services/test_market_condition_embedding.py -v
+```
+
 ---
 
 ## TODO: Symbol Discovery System

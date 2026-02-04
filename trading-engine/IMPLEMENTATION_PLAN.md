@@ -99,12 +99,13 @@
 - [x] Store in `TradeEmbedding` table
 - [x] Test embedding generation
 
-### 4.2 Market Condition Embeddings
-- [ ] Create daily job to embed market conditions
-- [ ] Collect VIX, SPY trend, sector performance
-- [ ] Format market context text
-- [ ] Generate and store embeddings
-- [ ] Test daily embedding job
+### 4.2 Market Condition Embeddings ✓
+- [x] Create service to embed market conditions (MarketConditionService)
+- [x] Collect VIX, SPY trend, sector performance
+- [x] Format market context text
+- [x] Generate and store embeddings
+- [x] Test embedding service
+- [ ] Create scheduled job (can be done later, service is ready)
 
 ### 4.3 FuzzyPicker Vector Integration
 - [ ] Query similar trades from `TradeEmbedding`
