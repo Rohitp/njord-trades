@@ -92,12 +92,12 @@
 
 ## Phase 4: Vector Integration
 
-### 4.1 Trade Embeddings
-- [ ] Create event handler for `TradeExecuted` events
-- [ ] Format trade context text (symbol, action, reasoning, outcome)
-- [ ] Generate embedding on trade completion
-- [ ] Store in `TradeEmbedding` table
-- [ ] Test embedding generation
+### 4.1 Trade Embeddings ✓
+- [x] Create event handler for `TradeExecuted` events (integrated into ExecutionService)
+- [x] Format trade context text (symbol, action, reasoning, outcome)
+- [x] Generate embedding on trade completion
+- [x] Store in `TradeEmbedding` table
+- [x] Test embedding generation
 
 ### 4.2 Market Condition Embeddings
 - [ ] Create daily job to embed market conditions

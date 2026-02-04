@@ -705,6 +705,50 @@ uv run pytest tests/test_services/test_discovery*.py -v
 
 ---
 
+## Phase 4: Vector Integration (IN PROGRESS)
+
+**Status**: IN PROGRESS
+
+#### 4.1 Trade Embeddings ✓
+- [x] Created `src/services/embeddings/trade_embedding.py`
+- [x] Format trade context text (symbol, action, reasoning, outcome)
+- [x] Generate embedding on trade completion
+- [x] Store in `TradeEmbedding` table
+- [x] Integrated into ExecutionService (automatic on trade completion)
+- [x] Created unit tests
+
+**Files Created**:
+- `src/services/embeddings/trade_embedding.py` - TradeEmbeddingService
+- `tests/test_services/test_trade_embedding.py` - Unit tests
+
+**Files Modified**:
+- `src/services/execution/service.py` - Integrated trade embedding generation
+
+**Features**:
+- **Automatic Generation**: Embeddings created automatically when trades are executed
+- **Context Formatting**: Includes symbol, action, reasoning, technical indicators, outcome, P&L
+- **Similarity Search**: `find_similar_trades()` method for finding similar trade setups
+- **Graceful Degradation**: Embedding failures don't block trade execution
+- **Deduplication**: Skips embedding generation if one already exists for a trade
+
+**Context Text Format**:
+```
+Symbol: AAPL | Action: BUY | Quantity: 5 | Price: $150.00 | Signal reasoning: RSI oversold | Signal confidence: 0.75 | Technical indicators: RSI: 28.0, SMA_20: $148.00, Volume ratio: 2.00x | Decision reasoning: Strong signal | Risk score: 0.50 | Outcome: WIN | P&L: $50.00 | P&L %: 6.67%
+```
+
+**Integration**:
+- Called automatically in `ExecutionService._persist_trade()` after trade is created
+- Part of same database transaction (rolls back if trade fails)
+- Non-blocking: embedding failures logged but don't prevent trade completion
+
+**Testing**:
+```bash
+# Run trade embedding tests
+uv run pytest tests/test_services/test_trade_embedding.py -v
+```
+
+---
+
 ## TODO: Symbol Discovery System
 
 **Status**: PLANNED

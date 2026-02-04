@@ -338,6 +338,26 @@ class ExecutionService:
             )
             self.db_session.add(event)
 
+            # Generate trade embedding (part of same transaction)
+            # If embedding fails, trade still succeeds (graceful degradation)
+            try:
+                from src.services.embeddings.trade_embedding import TradeEmbeddingService
+
+                embedding_service = TradeEmbeddingService()
+                await embedding_service.embed_trade(
+                    trade=trade,
+                    signal=signal,
+                    decision=decision,
+                    session=self.db_session,
+                )
+            except Exception as e:
+                log.warning(
+                    "trade_embedding_failed",
+                    trade_id=str(trade_id),
+                    error=str(e),
+                )
+                # Continue - embedding failure shouldn't block trade execution
+
             await self.db_session.commit()
 
             log.info("trade_persisted", trade_id=str(trade_id), symbol=signal.symbol)
