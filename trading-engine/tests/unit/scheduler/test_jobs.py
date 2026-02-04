@@ -1,11 +1,13 @@
 """Tests for scheduler jobs."""
 
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.scheduler.jobs import (
     get_scheduler,
     get_scheduled_jobs,
     register_scheduled_jobs,
+    run_scheduled_trading_cycle,
     stop_scheduler,
 )
 
@@ -124,3 +126,36 @@ class TestStopScheduler:
         assert scheduler1 is not scheduler2
 
         stop_scheduler()
+
+
+@pytest.mark.asyncio
+class TestRunScheduledTradingCycle:
+    """Tests for run_scheduled_trading_cycle."""
+
+    async def test_calls_auto_resume_check(self):
+        """Test that auto-resume check is called before cycle."""
+        with patch("src.scheduler.jobs.should_run_scheduled_job", return_value=True):
+            # Patch the imports that happen inside the function
+            with patch("src.database.connection.async_session_factory") as mock_factory:
+                with patch("src.workflows.runner.TradingCycleRunner") as mock_runner_class:
+                    with patch("src.services.circuit_breaker.CircuitBreakerService") as mock_cb_service_class:
+                        # Setup mocks
+                        mock_session = MagicMock()
+                        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                        mock_session.__aexit__ = AsyncMock(return_value=None)
+                        mock_factory.return_value = mock_session
+
+                        mock_runner = MagicMock()
+                        mock_runner.run_scheduled_cycle = AsyncMock()
+                        mock_runner_class.return_value = mock_runner
+
+                        mock_cb_service = MagicMock()
+                        mock_cb_service.check_auto_resume = AsyncMock()
+                        mock_cb_service_class.return_value = mock_cb_service
+
+                        # Run the cycle
+                        await run_scheduled_trading_cycle()
+
+                        # Verify auto-resume check was called
+                        mock_cb_service_class.assert_called_once_with(mock_session)
+                        mock_cb_service.check_auto_resume.assert_called_once()

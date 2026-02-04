@@ -194,24 +194,26 @@ class CircuitBreakerService:
         log.info("circuit_breaker_reset", reason=reason)
         return True
 
-    async def check_auto_resume(self) -> bool:
+    async def check_auto_resume_conditions(self) -> tuple[bool, str | None]:
         """
-        Check if auto-resume conditions are met.
+        Check if auto-resume conditions are met (without resetting).
 
         Auto-resume conditions:
         - Drawdown recovered to < 15% (was > 20%)
         - 3 consecutive wins after loss-triggered halt
-        - Sharpe > 0.3 for 7 days after Sharpe-triggered halt
+        - Sharpe > 0.3 for 7 days after Sharpe-triggered halt (not yet implemented)
 
         Returns:
-            True if auto-resumed
+            Tuple of (conditions_met, resume_reason)
+            - conditions_met: True if conditions are met for auto-resume
+            - resume_reason: Human-readable reason why conditions are met (None if not met)
         """
         stmt = select(SystemState).where(SystemState.id == 1)
         result = await self.db_session.execute(stmt)
         system_state = result.scalar_one_or_none()
 
         if system_state is None or not system_state.circuit_breaker_active:
-            return False
+            return False, None
 
         reason = system_state.circuit_breaker_reason or ""
 
@@ -224,8 +226,8 @@ class CircuitBreakerService:
             if portfolio and portfolio.peak_value > 0:
                 current_drawdown = (portfolio.peak_value - portfolio.total_value) / portfolio.peak_value
                 if current_drawdown < settings.trading.drawdown_resume_pct:
-                    await self.reset(f"Drawdown recovered to {current_drawdown:.1%}")
-                    return True
+                    resume_reason = f"Drawdown recovered to {current_drawdown:.1%} (below {settings.trading.drawdown_resume_pct:.0%} threshold)"
+                    return True, resume_reason
 
         # Check win streak after loss halt
         if "consecutive" in reason.lower():
@@ -241,10 +243,33 @@ class CircuitBreakerService:
             if len(trades) >= settings.trading.win_streak_resume:
                 all_wins = all(t.outcome == TradeOutcome.WIN.value for t in trades)
                 if all_wins:
-                    await self.reset(f"{settings.trading.win_streak_resume} consecutive wins")
-                    return True
+                    resume_reason = f"{settings.trading.win_streak_resume} consecutive wins achieved"
+                    return True, resume_reason
 
-        return False
+        # TODO: Check Sharpe ratio recovery (requires historical returns calculation)
+
+        return False, None
+
+    async def check_auto_resume(self) -> bool:
+        """
+        Check if auto-resume conditions are met and log the result.
+
+        This method checks conditions but does NOT auto-reset.
+        Manual approval via API is required to actually resume trading.
+
+        Returns:
+            True if conditions are met (but circuit breaker still active until manual approval)
+        """
+        conditions_met, resume_reason = await self.check_auto_resume_conditions()
+        
+        if conditions_met and resume_reason:
+            log.info(
+                "circuit_breaker_auto_resume_conditions_met",
+                reason=resume_reason,
+                note="Manual approval required via API to resume trading",
+            )
+        
+        return conditions_met
 
 
 async def evaluate_circuit_breaker(db_session: AsyncSession) -> bool:

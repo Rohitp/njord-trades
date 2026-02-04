@@ -58,6 +58,11 @@ async def monitor_price_moves_job() -> None:
 
         # Trigger event cycles for each symbol that moved
         async with async_session_factory() as session:
+            # Check auto-resume conditions before cycles (but don't auto-reset)
+            from src.services.circuit_breaker import CircuitBreakerService
+            circuit_breaker = CircuitBreakerService(session)
+            await circuit_breaker.check_auto_resume()
+
             runner = TradingCycleRunner(db_session=session)
 
             for symbol in triggered_symbols:

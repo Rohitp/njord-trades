@@ -1660,4 +1660,77 @@ News APIs → SentimentService → NewsArticle (DB) → SentimentSnapshot (DB) �
 
 ---
 
-*Last updated: 2026-02-04 (Phase 13: S&P 500 & Sentiment Integration planned)*
+---
+
+## Phase 6: Circuit Breaker Auto-Resume ✓
+
+**Status**: COMPLETE | Completed: 2026-02-04
+
+### Overview
+
+Implemented auto-resume condition checking for the circuit breaker. The system now checks if recovery conditions are met before each trading cycle, but requires manual approval via API to actually resume trading.
+
+### Implementation Details
+
+**6.1 Scheduler Integration**:
+- Modified `CircuitBreakerService.check_auto_resume()` to check conditions without auto-resetting
+- Added `check_auto_resume_conditions()` method that returns `(conditions_met, resume_reason)`
+- Integrated auto-resume check into:
+  - `src/scheduler/jobs.py` - Before scheduled trading cycles
+  - `src/workflows/runner.py` - Before event cycles
+  - `src/scheduler/event_monitor_job.py` - Before event monitor cycles
+- Auto-resume check logs when conditions are met but does NOT auto-reset (requires manual approval)
+
+**6.2 Manual Approval API**:
+- Added `POST /api/system/circuit-breaker/resume` endpoint
+- Endpoint checks auto-resume conditions before allowing reset
+- Returns detailed response with `conditions_met`, `resume_reason`, and `success` status
+- Rejects resume attempts when conditions are not met
+- Uses auto-resume reason in reset message when conditions are met
+
+**Auto-Resume Conditions**:
+1. **Drawdown Recovery**: Drawdown recovered to < 15% (if halted due to >20% drawdown)
+2. **Win Streak**: 3 consecutive wins (if halted due to 10 consecutive losses)
+3. **Sharpe Ratio**: > 0.3 for 7 days (not yet implemented - requires historical returns calculation)
+
+### Files Modified
+
+- `src/services/circuit_breaker.py`:
+  - Added `check_auto_resume_conditions()` method
+  - Modified `check_auto_resume()` to log conditions without auto-resetting
+- `src/api/routers/system.py`:
+  - Added `POST /api/system/circuit-breaker/resume` endpoint
+  - Added `CircuitBreakerResumeResponse` schema
+- `src/scheduler/jobs.py`:
+  - Added auto-resume check before scheduled cycles
+- `src/workflows/runner.py`:
+  - Added auto-resume check before event cycles
+- `src/scheduler/event_monitor_job.py`:
+  - Added auto-resume check before event monitor cycles
+
+### Tests
+
+- `tests/unit/services/test_circuit_breaker.py`:
+  - Test drawdown recovery condition
+  - Test win streak condition
+  - Test insufficient conditions
+  - Test logging when conditions are met
+- `tests/unit/api/test_system.py`:
+  - Test resume endpoint with conditions not met
+  - Test resume endpoint with conditions met
+  - Test resume endpoint when circuit breaker not active
+
+### Configuration
+
+Uses existing config values:
+- `settings.trading.drawdown_resume_pct` (default: 0.15)
+- `settings.trading.win_streak_resume` (default: 3)
+
+### Next Steps
+
+- Implement Sharpe ratio auto-resume condition (requires historical returns calculation)
+- Add monitoring/alerting when auto-resume conditions are met (Phase 7: Alert System)
+
+---
+
+*Last updated: 2026-02-04 (Phase 6: Circuit Breaker Auto-Resume complete)*

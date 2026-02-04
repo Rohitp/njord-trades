@@ -51,10 +51,15 @@ async def run_scheduled_trading_cycle() -> None:
     try:
         # Import here to avoid circular imports
         from src.database.connection import async_session_factory
+        from src.services.circuit_breaker import CircuitBreakerService
         from src.workflows.runner import TradingCycleRunner
 
         # Create database session
         async with async_session_factory() as session:
+            # Check auto-resume conditions before cycle (but don't auto-reset)
+            circuit_breaker = CircuitBreakerService(session)
+            await circuit_breaker.check_auto_resume()
+
             runner = TradingCycleRunner(db_session=session)
 
             # Run with default watchlist

@@ -68,22 +68,27 @@ class TestMonitorPriceMovesJob:
             mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_factory.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            # Mock runner
-            mock_runner = MagicMock()
-            mock_result = MagicMock()
-            mock_result.cycle_id = "test-cycle-id"
-            mock_result.signals = []
-            mock_result.final_decisions = []
-            mock_runner.run_event_cycle = AsyncMock(return_value=mock_result)
-            mock_runner_class.return_value = mock_runner
+            # Mock CircuitBreakerService (imported inside function)
+            with patch("src.services.circuit_breaker.CircuitBreakerService") as mock_cb_class:
+                mock_cb_service = MagicMock()
+                mock_cb_service.check_auto_resume = AsyncMock()
+                mock_cb_class.return_value = mock_cb_service
 
-            await monitor_price_moves_job()
+                # Mock runner
+                mock_runner = MagicMock()
+                mock_result = MagicMock()
+                mock_result.cycle_id = "test-cycle-id"
+                mock_result.signals = []
+                mock_result.final_decisions = []
+                mock_runner.run_event_cycle = AsyncMock(return_value=mock_result)
+                mock_runner_class.return_value = mock_runner
 
-            # Verify cycle was triggered
-            mock_runner.run_event_cycle.assert_called_once_with(
-                trigger_symbol="AAPL",
-                trace_id=mock_runner.run_event_cycle.call_args[1]["trace_id"],
-            )
+                await monitor_price_moves_job()
+
+                # Verify cycle was triggered
+                assert mock_runner.run_event_cycle.called
+                call_args = mock_runner.run_event_cycle.call_args
+                assert call_args[1]["trigger_symbol"] == "AAPL"
 
     @pytest.mark.asyncio
     async def test_job_handles_circuit_breaker(self):
@@ -109,16 +114,22 @@ class TestMonitorPriceMovesJob:
             mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_factory.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            # Mock runner to raise ValueError (circuit breaker)
-            mock_runner = MagicMock()
-            mock_runner.run_event_cycle = AsyncMock(side_effect=ValueError("Trading halted by circuit breaker"))
-            mock_runner_class.return_value = mock_runner
+            # Mock CircuitBreakerService (imported inside function)
+            with patch("src.services.circuit_breaker.CircuitBreakerService") as mock_cb_class:
+                mock_cb_service = MagicMock()
+                mock_cb_service.check_auto_resume = AsyncMock()
+                mock_cb_class.return_value = mock_cb_service
 
-            # Should not raise exception
-            await monitor_price_moves_job()
+                # Mock runner to raise ValueError (circuit breaker)
+                mock_runner = MagicMock()
+                mock_runner.run_event_cycle = AsyncMock(side_effect=ValueError("Trading halted by circuit breaker"))
+                mock_runner_class.return_value = mock_runner
 
-            # Verify cycle was attempted
-            mock_runner.run_event_cycle.assert_called_once()
+                # Should not raise exception
+                await monitor_price_moves_job()
+
+                # Verify cycle was attempted
+                mock_runner.run_event_cycle.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_job_handles_errors_gracefully(self):

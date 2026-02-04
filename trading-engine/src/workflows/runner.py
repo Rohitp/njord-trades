@@ -155,6 +155,12 @@ class TradingCycleRunner:
         if await self._is_circuit_breaker_active():
             raise ValueError("Trading halted by circuit breaker")
 
+        # Check auto-resume conditions (but don't auto-reset - requires manual approval)
+        if self.db_session:
+            from src.services.circuit_breaker import CircuitBreakerService
+            circuit_breaker = CircuitBreakerService(self.db_session)
+            await circuit_breaker.check_auto_resume()
+
         log.info("cycle_started", cycle_type="event", trigger_symbol=trigger_symbol)
 
         start_time = datetime.now()

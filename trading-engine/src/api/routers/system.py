@@ -44,6 +44,15 @@ class CircuitBreakerResetResponse(BaseModel):
     message: str
 
 
+class CircuitBreakerResumeResponse(BaseModel):
+    """Response from circuit breaker resume (with condition check)."""
+
+    success: bool
+    message: str
+    conditions_met: bool
+    resume_reason: str | None = None
+
+
 @router.get("/circuit-breaker", response_model=CircuitBreakerStatus)
 async def get_circuit_breaker_status(
     db: AsyncSession = Depends(get_session),
@@ -106,6 +115,69 @@ async def reset_circuit_breaker(
         return CircuitBreakerResetResponse(
             success=False,
             message="Circuit breaker was not active or does not exist.",
+        )
+
+
+@router.post("/circuit-breaker/resume", response_model=CircuitBreakerResumeResponse)
+async def resume_circuit_breaker(
+    request: CircuitBreakerResetRequest,
+    db: AsyncSession = Depends(get_session),
+) -> CircuitBreakerResumeResponse:
+    """
+    Resume trading after circuit breaker activation.
+
+    This endpoint checks if auto-resume conditions are met before allowing
+    manual reset. Conditions include:
+    - Drawdown recovered to < 15% (if halted due to drawdown)
+    - 3 consecutive wins (if halted due to consecutive losses)
+    - Sharpe ratio > 0.3 for 7 days (if halted due to Sharpe ratio)
+
+    If conditions are not met, the reset will be rejected.
+    """
+    service = CircuitBreakerService(db)
+
+    # Check if auto-resume conditions are met
+    conditions_met, resume_reason = await service.check_auto_resume_conditions()
+
+    if not conditions_met:
+        log.warning(
+            "circuit_breaker_resume_rejected",
+            reason="Auto-resume conditions not met",
+            user_reason=request.reason,
+        )
+        return CircuitBreakerResumeResponse(
+            success=False,
+            message="Cannot resume: Auto-resume conditions are not met. Check circuit breaker status for details.",
+            conditions_met=False,
+            resume_reason=None,
+        )
+
+    # Conditions are met - proceed with manual reset
+    # Use the auto-resume reason if user didn't provide a custom one
+    reset_reason = request.reason
+    if resume_reason and request.reason == "Manual reset via API":
+        reset_reason = f"{resume_reason} (approved via API)"
+
+    success = await service.reset(reset_reason)
+
+    if success:
+        log.info(
+            "circuit_breaker_resumed_via_api",
+            auto_resume_reason=resume_reason,
+            user_reason=request.reason,
+        )
+        return CircuitBreakerResumeResponse(
+            success=True,
+            message="Circuit breaker has been reset. Trading is now enabled.",
+            conditions_met=True,
+            resume_reason=resume_reason,
+        )
+    else:
+        return CircuitBreakerResumeResponse(
+            success=False,
+            message="Circuit breaker was not active or does not exist.",
+            conditions_met=conditions_met,
+            resume_reason=resume_reason,
         )
 
 

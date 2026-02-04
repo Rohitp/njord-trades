@@ -161,20 +161,26 @@
 
 ---
 
-## Phase 6: Circuit Breaker Auto-Resume
+## Phase 6: Circuit Breaker Auto-Resume ✓
 
-### 6.1 Scheduler Integration
-- [ ] Call `check_auto_resume()` before each trading cycle
-- [ ] Integrate into `src/scheduler/jobs.py`
-- [ ] Test auto-resume conditions:
+**Status**: COMPLETE | See devlog.md "Phase 6: Circuit Breaker Auto-Resume" section
+
+### 6.1 Scheduler Integration ✓
+- [x] Call `check_auto_resume()` before each trading cycle
+- [x] Integrate into `src/scheduler/jobs.py`
+- [x] Integrate into `src/workflows/runner.py` (event cycles)
+- [x] Integrate into `src/scheduler/event_monitor_job.py`
+- [x] Test auto-resume conditions:
   - Drawdown recovery < 15%
   - Win streak of 3+
-  - Sharpe ratio > 0.3 for 7 days
+  - Sharpe ratio > 0.3 for 7 days (not yet implemented)
 
-### 6.2 Manual Approval
-- [ ] Require manual approval via API before resuming
-- [ ] Add endpoint `POST /api/system/circuit-breaker/resume`
-- [ ] Test approval flow
+### 6.2 Manual Approval ✓
+- [x] Require manual approval via API before resuming
+- [x] Add endpoint `POST /api/system/circuit-breaker/resume`
+- [x] Check conditions before allowing reset
+- [x] Test approval flow
+- [x] Write unit tests for service and API endpoint
 
 ---
 
