@@ -1420,6 +1420,93 @@ uv run pytest tests/unit/scheduler/ -v
 
 ---
 
+## Phase 5: Event Monitor (Price Move Detection) ✓
+
+**Status**: COMPLETE | All sub-phases (5.1-5.4) complete
+
+### Overview
+
+Event-driven trading cycles triggered by significant price moves (>5% within 15 minutes). Runs as a background job in the main FastAPI app, polling watchlist symbols every 60 seconds during market hours.
+
+### Implementation
+
+**Files Created**:
+- `src/services/event_monitor.py` - EventMonitor service and PriceHistory class
+- `src/scheduler/event_monitor_job.py` - Background job function
+- `tests/unit/services/test_event_monitor.py` - Unit tests for EventMonitor
+- `tests/unit/scheduler/test_event_monitor_job.py` - Unit tests for background job
+
+**Files Modified**:
+- `src/scheduler/background_jobs.py` - Registered event monitor job
+- `src/config.py` - Added `enabled` field to EventMonitorSettings
+
+### Features
+
+**Price Tracking**:
+- In-memory price history (15-minute sliding window)
+- Tracks price points with timestamps
+- Automatically prunes old prices outside window
+
+**Move Detection**:
+- Calculates price change percentage over time window
+- Configurable threshold (default: 5%)
+- Configurable time window (default: 15 minutes)
+- Handles insufficient history gracefully
+
+**Cooldown Management**:
+- Per-symbol cooldown (default: 15 minutes)
+- Prevents duplicate triggers for same symbol
+- Tracks last trigger time per symbol
+
+**Background Job**:
+- Runs every 60 seconds via APScheduler
+- Checks market hours before running
+- Respects `event_monitor.enabled` config
+- Calls `TradingCycleRunner.run_event_cycle()` directly
+- Handles errors gracefully (doesn't crash scheduler)
+
+**Configuration**:
+```python
+EVENT_MONITOR_ENABLED=true
+EVENT_MONITOR_PRICE_MOVE_THRESHOLD_PCT=0.05  # 5%
+EVENT_MONITOR_MOVE_WINDOW_MINUTES=15
+EVENT_MONITOR_COOLDOWN_MINUTES=15
+EVENT_MONITOR_POLL_INTERVAL_SECONDS=60
+EVENT_MONITOR_STOCKS_ONLY=true
+```
+
+### Usage
+
+The event monitor runs automatically when the scheduler starts. No manual intervention needed.
+
+**Example Flow**:
+1. Job runs every 60 seconds
+2. Checks watchlist symbols: ["AAPL", "MSFT", "GOOGL"]
+3. Fetches current prices
+4. Compares to prices from 15 minutes ago
+5. If AAPL moved 6% → triggers `run_event_cycle("AAPL")`
+6. Cooldown prevents re-triggering AAPL for 15 minutes
+
+### Testing
+
+```bash
+# Run event monitor tests
+uv run pytest tests/unit/services/test_event_monitor.py -v
+uv run pytest tests/unit/scheduler/test_event_monitor_job.py -v
+```
+
+**Test Coverage**:
+- Price history tracking and windowing
+- Price change calculation
+- Cooldown logic
+- Move detection (above/below threshold)
+- Options filtering
+- Error handling
+- Background job execution
+- Circuit breaker handling
+
+---
+
 ## Phase 13: S&P 500 & Sentiment Integration (PLANNED)
 
 **Status**: PLANNED | Not yet started

@@ -127,30 +127,37 @@
 
 ---
 
-## Phase 5: Event Monitor Service
+## Phase 5: Event Monitor (Price Move Detection) ✓
 
-### 5.1 Service Setup
-- [ ] Create `event-monitor/` directory
-- [ ] Create `event-monitor/Dockerfile`
-- [ ] Create `event-monitor/pyproject.toml`
-- [ ] Create `event-monitor/src/monitor.py`
+**Status**: COMPLETE | See devlog.md "Phase 5: Event Monitor" section
 
-### 5.2 Price Monitoring
-- [ ] Implement polling every 60 seconds
-- [ ] Track price history (15-minute window)
-- [ ] Detect 5% price moves
-- [ ] Implement 15-minute cooldown between scans
-- [ ] Stocks only (no options)
+### 5.1 Price Monitoring Service ✓
+- [x] Create `src/services/event_monitor.py`
+- [x] Implement price tracking (store last price per symbol)
+- [x] Track price history (15-minute window in memory)
+- [x] Detect 5% price moves (current vs 15min ago)
+- [x] Implement 15-minute cooldown between scans (per symbol)
+- [x] Stocks only (no options)
 
-### 5.3 Cycle Triggering
-- [ ] Call FastAPI endpoint `/api/cycles/run?type=event&symbol=TSLA`
-- [ ] Handle errors gracefully
-- [ ] Log all triggers
+### 5.2 Background Job ✓
+- [x] Create `src/scheduler/event_monitor_job.py`
+- [x] Implement `monitor_price_moves_job()` function
+- [x] Poll watchlist symbols every 60 seconds during market hours
+- [x] Call `TradingCycleRunner.run_event_cycle()` directly (not via HTTP)
+- [x] Handle errors gracefully (don't crash scheduler)
+- [x] Log all triggers and price moves
 
-### 5.4 Docker Integration
-- [ ] Add event-monitor service to `docker-compose.yml`
-- [ ] Configure environment variables
-- [ ] Test container startup
+### 5.3 Scheduler Integration ✓
+- [x] Register job in `src/scheduler/background_jobs.py`
+- [x] Use `IntervalTrigger` (every 60 seconds, job checks market hours)
+- [x] Add to `register_background_jobs()` function
+- [x] Test job execution
+
+### 5.4 Configuration ✓
+- [x] Add `event_monitor.enabled` to `src/config.py` (default: True)
+- [x] Add `event_monitor.poll_interval_seconds` (default: 60)
+- [x] Add `event_monitor.price_move_threshold_pct` (default: 0.05)
+- [x] Add `event_monitor.cooldown_minutes` (default: 15)
 
 ---
 

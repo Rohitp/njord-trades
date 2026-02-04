@@ -114,6 +114,7 @@ class SchedulingSettings(BaseSettings):
 class EventMonitorSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="EVENT_MONITOR_")
     
+    enabled: bool = Field(default=True, description="Enable event monitor")
     price_move_threshold_pct: float = Field(default=0.05, description="5% price move trigger")
     move_window_minutes: int = Field(default=15, description="Time window for price move")
     cooldown_minutes: int = Field(default=15, description="Cooldown between event scans")

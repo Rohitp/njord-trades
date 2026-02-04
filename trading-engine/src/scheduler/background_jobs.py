@@ -1,10 +1,11 @@
 """
-Background processing jobs for embeddings and discovery.
+Background processing jobs for embeddings, discovery, and event monitoring.
 
 These jobs run asynchronously to avoid blocking API calls:
 - Trade embeddings: Generate embeddings for completed trades (hourly)
 - Market condition embeddings: Generate daily market condition embeddings (daily at market close)
 - Discovery cycle: Run symbol discovery (weekly)
+- Event monitor: Monitor price moves and trigger event cycles (every 60 seconds)
 """
 
 import asyncio
@@ -171,6 +172,7 @@ def register_background_jobs(scheduler) -> None:
         scheduler: APScheduler instance
     """
     from apscheduler.triggers.cron import CronTrigger
+    from apscheduler.triggers.interval import IntervalTrigger
 
     tz = get_trading_timezone()
 
@@ -218,5 +220,19 @@ def register_background_jobs(scheduler) -> None:
         max_instances=1,
     )
 
-    log.info("background_jobs_registered", job_count=3)
+    # Event monitor: Run every 60 seconds during market hours
+    from src.scheduler.event_monitor_job import monitor_price_moves_job
+
+    scheduler.add_job(
+        monitor_price_moves_job,
+        trigger=IntervalTrigger(
+            seconds=settings.event_monitor.poll_interval_seconds,
+        ),
+        id="background_event_monitor",
+        name="Monitor price moves (every 60s, market hours only)",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    log.info("background_jobs_registered", job_count=4)
 
