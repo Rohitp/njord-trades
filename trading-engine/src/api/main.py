@@ -6,7 +6,8 @@ from fastapi import FastAPI
 
 from src.api.exceptions import TradingSystemError, trading_error_handler
 from src.api.middleware import RequestLoggingMiddleware
-from src.api.routers import capital, cycles, events, health, market_data, metrics, portfolio, strategies, system, trades
+from src.api.routers import capital, cycles, events, health, market_data, metrics, portfolio, scheduler, strategies, system, trades
+from src.config import settings
 from src.utils.logging import get_logger, setup_logging
 
 # Setup logging first
@@ -18,6 +19,7 @@ tags_metadata = [
     {"name": "Health", "description": "System health checks"},
     {"name": "System", "description": "Circuit breaker and trading controls"},
     {"name": "Trading Cycles", "description": "Run multi-agent trading cycles"},
+    {"name": "Scheduler", "description": "Scheduled job management"},
     {"name": "Events", "description": "Append-only event log for audit trail"},
     {"name": "Portfolio", "description": "Portfolio state and positions"},
     {"name": "Trades", "description": "Trade history and execution"},
@@ -32,7 +34,21 @@ tags_metadata = [
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     log.info("trading_engine_starting", version="0.1.0")
+
+    # Start scheduler if not in test environment
+    scheduler_instance = None
+    if settings.environment != "test":
+        from src.scheduler import start_scheduler, stop_scheduler
+        scheduler_instance = start_scheduler()
+        log.info("scheduler_integrated", job_count=len(scheduler_instance.get_jobs()))
+
     yield
+
+    # Stop scheduler
+    if scheduler_instance is not None:
+        from src.scheduler import stop_scheduler
+        stop_scheduler()
+
     log.info("trading_engine_stopping")
 
 
@@ -61,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(system.router)
     app.include_router(cycles.router)
+    app.include_router(scheduler.router)
     app.include_router(events.router)
     app.include_router(portfolio.router)
     app.include_router(trades.router)

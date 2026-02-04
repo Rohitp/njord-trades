@@ -23,6 +23,8 @@ dependencies = [
     "psycopg2-binary>=2.9.9",
     "tenacity>=8.4.2",
     "prometheus-client>=0.24.1",
+    "apscheduler>=3.10.0",
+    "pytz>=2024.1",
 ]
 
 [project.optional-dependencies]

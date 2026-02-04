@@ -306,25 +306,87 @@ curl -X POST http://localhost:8000/cycles/run \
 
 ---
 
+### Circuit Breaker ✓
+
+**Status**: IMPLEMENTED
+
+Automatic trading halt when risk thresholds are breached.
+
+```
+Files created:
+- src/services/circuit_breaker.py   # CircuitBreakerService
+- src/api/routers/system.py         # System management endpoints
+```
+
+**Trigger Conditions**:
+| Condition | Threshold | Config Key |
+|-----------|-----------|------------|
+| Drawdown from peak | > 20% | `TRADING_DRAWDOWN_HALT_PCT` |
+| Consecutive losses | ≥ 10 | `TRADING_CONSECUTIVE_LOSS_HALT` |
+
+**Auto-Resume Conditions**:
+| Condition | Threshold | Config Key |
+|-----------|-----------|------------|
+| Drawdown recovery | < 15% | `TRADING_DRAWDOWN_RESUME_PCT` |
+| Win streak after halt | 3 wins | `TRADING_WIN_STREAK_RESUME` |
+
+**API Endpoints**:
+```bash
+GET  /api/system/circuit-breaker          # Check status
+POST /api/system/circuit-breaker/reset    # Manual reset
+POST /api/system/circuit-breaker/evaluate # Force evaluation
+POST /api/system/trading/disable          # Emergency stop
+POST /api/system/trading/enable           # Re-enable
+```
+
+**Integration**:
+- Checked before each trading cycle in `TradingCycleRunner`
+- Evaluated after each trade execution in `ExecutionService`
+- Metrics: `circuit_breaker_triggers`, `current_drawdown`, `consecutive_losses`
+
+---
+
+### Scheduled Execution ✓
+
+**Status**: IMPLEMENTED
+
+APScheduler-based automatic execution of trading cycles at configured times.
+
+```
+Files created:
+- src/scheduler/__init__.py       # Module exports
+- src/scheduler/triggers.py       # Market hours logic
+- src/scheduler/jobs.py           # Job definitions and registration
+- src/api/routers/scheduler.py    # Scheduler API endpoints
+```
+
+**Configuration** (in .env):
+```bash
+SCHEDULE_SCAN_TIMES=["11:00", "14:30"]    # Times in EST
+SCHEDULE_TIMEZONE=America/New_York        # Trading timezone
+SCHEDULE_MARKET_HOURS_ONLY=true           # Only run during market hours
+SCHEDULE_WEEKDAYS_ONLY=true               # Only run on weekdays
+```
+
+**API Endpoints**:
+```bash
+GET  /api/scheduler/status           # Scheduler status and jobs list
+GET  /api/scheduler/jobs             # List all scheduled jobs
+POST /api/scheduler/jobs/{id}/trigger  # Manually trigger a job
+GET  /api/scheduler/market-status    # Market open status
+```
+
+**How it works**:
+1. Scheduler starts automatically with FastAPI (except in test environment)
+2. Jobs are registered for each time in `SCHEDULE_SCAN_TIMES`
+3. Jobs check market conditions before running (`should_run_scheduled_job`)
+4. Uses watchlist symbols from `TRADING_WATCHLIST_SYMBOLS`
+
+---
+
 ## Future Extensions
 
-### 1. Scheduled Execution
-
-**Current**: Manual API trigger only
-**Needed**: Run at configured times (11:00, 14:30 EST)
-
-```
-Options:
-- APScheduler integration in FastAPI lifespan
-- External cron calling /cycles/run
-- Celery beat for distributed scheduling
-
-Files to create:
-- src/scheduler/jobs.py           # Job definitions
-- src/scheduler/triggers.py       # Market hours logic
-```
-
-### 2. Event-Triggered Cycles
+### 1. Event-Triggered Cycles
 
 **Current**: Manual event cycle trigger
 **Needed**: Auto-detect >5% price moves
@@ -381,14 +443,18 @@ Files to create:
 
 ### 6. Circuit Breaker Auto-Resume
 
-**Current**: Manual resume only
-**Needed**: Auto-resume when conditions met
+**Current**: Logic exists in `CircuitBreakerService.check_auto_resume()`, but not automatically triggered
+**Needed**: Periodic or event-driven invocation of auto-resume check
 
 ```
-Logic to add in runner.py:
-- If drawdown < 15% and was > 20%, resume
-- If 3 consecutive wins after loss halt, resume
-- If Sharpe > 0.3 for 7 days after Sharpe halt, resume
+Logic implemented in src/services/circuit_breaker.py:
+- Drawdown recovery: < 15% when circuit breaker is active
+- Win streak: 3 consecutive wins after halt
+
+Remaining work:
+- Call check_auto_resume() from scheduler (when implemented)
+- Or call it at start of each trading cycle attempt
+- Consider: evaluate before blocking in runner.py
 ```
 
 ### 7. Multi-Strategy Support
@@ -478,12 +544,15 @@ uv run alembic upgrade head
 tests/
 ├── test_agents/
 │   └── test_risk_manager.py    # Hard constraints, LLM parsing, full flow
+├── test_scheduler/
+│   ├── test_triggers.py        # Market hours, time parsing
+│   └── test_jobs.py            # Job registration, scheduler lifecycle
 ├── test_workflows/
 │   ├── test_state.py           # State dataclass tests
 │   └── test_graph.py           # Graph compilation, execution, runner
 ```
 
-Current: **45 tests passing**
+Current: **79 tests passing**
 
 ---
 
@@ -507,4 +576,4 @@ Current: **45 tests passing**
 
 ---
 
-*Last updated: 2026-02-03*
+*Last updated: 2026-02-04*

@@ -18,6 +18,9 @@ async_session = async_sessionmaker(
     expire_on_commit=False,
 )
 
+# Alias for scheduler and other non-FastAPI contexts
+async_session_factory = async_session
+
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """
