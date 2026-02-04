@@ -107,11 +107,11 @@
 - [x] Test embedding service
 - [ ] Create scheduled job (can be done later, service is ready)
 
-### 4.3 FuzzyPicker Vector Integration
-- [ ] Query similar trades from `TradeEmbedding`
-- [ ] Adjust scores based on similar trade outcomes
-- [ ] Integrate into `FuzzyPicker` scoring logic
-- [ ] Test similarity-based scoring
+### 4.3 FuzzyPicker Vector Integration ✓
+- [x] Query similar trades from `TradeEmbedding`
+- [x] Adjust scores based on similar trade outcomes
+- [x] Integrate into `FuzzyPicker` scoring logic
+- [x] Test similarity-based scoring
 
 ### 4.4 LLMPicker Vector Integration
 - [ ] Query similar market conditions

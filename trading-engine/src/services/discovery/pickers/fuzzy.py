@@ -7,6 +7,9 @@ Returns ranked list (0.0-1.0 scores) rather than binary pass/fail.
 
 from typing import List
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.database.models import Trade
 from src.services.discovery.pickers.base import PickerResult, SymbolPicker
 from src.services.discovery.scoring import (
     liquidity_score,
@@ -14,6 +17,7 @@ from src.services.discovery.scoring import (
     volatility_score,
 )
 from src.services.discovery.sources.alpaca import AlpacaAssetSource
+from src.services.embeddings.trade_embedding import TradeEmbeddingService
 from src.services.market_data.service import MarketDataService
 from src.utils.logging import get_logger
 
@@ -39,7 +43,9 @@ class FuzzyPicker(SymbolPicker):
         volatility_weight: float = 0.25,
         momentum_weight: float = 0.35,
         sector_weight: float = 0.10,
+        similarity_weight: float = 0.15,  # Weight for similarity-based adjustment
         min_score_threshold: float = 0.3,  # Only return symbols above this
+        db_session: AsyncSession | None = None,  # Optional DB session for similarity search
     ):
         """
         Initialize FuzzyPicker with scoring weights.
@@ -49,15 +55,17 @@ class FuzzyPicker(SymbolPicker):
             volatility_weight: Weight for volatility score (default: 0.25)
             momentum_weight: Weight for momentum score (default: 0.35)
             sector_weight: Weight for sector balance score (default: 0.10)
+            similarity_weight: Weight for similarity-based adjustment (default: 0.15)
             min_score_threshold: Minimum composite score to include (default: 0.3)
+            db_session: Database session for similarity search (optional)
         """
-        # Normalize weights to sum to 1.0
-        total_weight = liquidity_weight + volatility_weight + momentum_weight + sector_weight
-        if total_weight > 0:
-            self.liquidity_weight = liquidity_weight / total_weight
-            self.volatility_weight = volatility_weight / total_weight
-            self.momentum_weight = momentum_weight / total_weight
-            self.sector_weight = sector_weight / total_weight
+        # Normalize base weights (excluding similarity which is applied as adjustment)
+        base_total = liquidity_weight + volatility_weight + momentum_weight + sector_weight
+        if base_total > 0:
+            self.liquidity_weight = liquidity_weight / base_total
+            self.volatility_weight = volatility_weight / base_total
+            self.momentum_weight = momentum_weight / base_total
+            self.sector_weight = sector_weight / base_total
         else:
             # Default equal weights if all zero
             self.liquidity_weight = 0.25
@@ -65,10 +73,13 @@ class FuzzyPicker(SymbolPicker):
             self.momentum_weight = 0.25
             self.sector_weight = 0.25
 
+        self.similarity_weight = similarity_weight
         self.min_score_threshold = min_score_threshold
+        self.db_session = db_session
 
         self.asset_source = AlpacaAssetSource()
         self.market_data = MarketDataService()
+        self.trade_embedding_service = TradeEmbeddingService() if db_session else None
 
     @property
     def name(self) -> str:
@@ -191,18 +202,122 @@ class FuzzyPicker(SymbolPicker):
         # For now, this is a placeholder
         metadata["sector_balance_score"] = sector_balance
 
-        # Calculate weighted composite score
-        composite_score = (
+        # Calculate weighted composite score (base score)
+        base_score = (
             liquidity * self.liquidity_weight
             + volatility * self.volatility_weight
             + momentum * self.momentum_weight
             + sector_balance * self.sector_weight
         )
 
+        # Apply similarity-based adjustment if DB session available
+        similarity_adjustment = 0.0
+        if self.db_session and self.trade_embedding_service:
+            try:
+                similarity_adjustment = await self._calculate_similarity_adjustment(
+                    symbol, quote, indicators
+                )
+                metadata["similarity_adjustment"] = similarity_adjustment
+            except Exception as e:
+                log.debug("similarity_adjustment_failed", symbol=symbol, error=str(e))
+                # Continue without adjustment on error
+
+        # Apply adjustment: boost if positive, reduce if negative
+        # Adjustment is weighted by similarity_weight
+        composite_score = base_score + (similarity_adjustment * self.similarity_weight)
+        composite_score = max(0.0, min(1.0, composite_score))  # Clamp to [0, 1]
+
+        metadata["base_score"] = base_score
         metadata["composite_score"] = composite_score
         metadata["picker"] = "fuzzy"
 
         return composite_score, metadata
+
+    async def _calculate_similarity_adjustment(
+        self,
+        symbol: str,
+        quote,
+        indicators,
+    ) -> float:
+        """
+        Calculate score adjustment based on similar trade outcomes.
+
+        Args:
+            symbol: Symbol being scored
+            quote: Current quote
+            indicators: Technical indicators
+
+        Returns:
+            Adjustment factor (-1.0 to +1.0):
+            - Positive = similar trades were winners (boost score)
+            - Negative = similar trades were losers (reduce score)
+            - 0.0 = no similar trades or mixed outcomes
+        """
+        # Build context text similar to trade embedding format
+        context_parts = [f"Symbol: {symbol}"]
+
+        if quote.price:
+            context_parts.append(f"Price: ${quote.price:.2f}")
+
+        if indicators.rsi_14 is not None:
+            context_parts.append(f"RSI: {indicators.rsi_14:.1f}")
+        if indicators.sma_20 is not None:
+            context_parts.append(f"SMA_20: ${indicators.sma_20:.2f}")
+        if indicators.sma_50 is not None:
+            context_parts.append(f"SMA_50: ${indicators.sma_50:.2f}")
+        if indicators.sma_200 is not None:
+            context_parts.append(f"SMA_200: ${indicators.sma_200:.2f}")
+        if indicators.volume_ratio is not None:
+            context_parts.append(f"Volume ratio: {indicators.volume_ratio:.2f}x")
+
+        context_text = " | ".join(context_parts)
+
+        # Find similar trades
+        similar_trades = await self.trade_embedding_service.find_similar_trades(
+            context_text=context_text,
+            limit=5,
+            min_similarity=0.7,
+            session=self.db_session,
+        )
+
+        if not similar_trades:
+            return 0.0  # No similar trades found
+
+        # Get trade outcomes from database
+        from sqlalchemy import select
+
+        trade_ids = [te.trade_id for te in similar_trades]
+        stmt = select(Trade).where(Trade.id.in_(trade_ids))
+        result = await self.db_session.execute(stmt)
+        trades = result.scalars().all()
+
+        # Calculate win rate
+        wins = sum(1 for t in trades if t.outcome == "WIN")
+        losses = sum(1 for t in trades if t.outcome == "LOSS")
+        total_with_outcome = wins + losses
+
+        if total_with_outcome == 0:
+            return 0.0  # No trades with outcomes yet
+
+        win_rate = wins / total_with_outcome
+
+        # Convert win rate to adjustment factor
+        # 1.0 win rate = +1.0 adjustment (strong boost)
+        # 0.0 win rate = -1.0 adjustment (strong penalty)
+        # 0.5 win rate = 0.0 adjustment (neutral)
+        adjustment = (win_rate - 0.5) * 2.0  # Scale to [-1, +1]
+
+        log.debug(
+            "similarity_adjustment_calculated",
+            symbol=symbol,
+            similar_trades=len(similar_trades),
+            wins=wins,
+            losses=losses,
+            win_rate=win_rate,
+            adjustment=adjustment,
+        )
+
+        return adjustment
 
     def _build_reason(self, score: float, metadata: dict) -> str:
         """Build reason string explaining the score."""
@@ -215,6 +330,9 @@ class FuzzyPicker(SymbolPicker):
             parts.append(f"momentum={metadata['momentum_score']:.2f}")
         if "sector_balance_score" in metadata:
             parts.append(f"sector={metadata['sector_balance_score']:.2f}")
+        if "similarity_adjustment" in metadata:
+            adj = metadata["similarity_adjustment"]
+            parts.append(f"similarity={adj:+.2f}")
 
         reason = f"Composite score {score:.3f} ({', '.join(parts)})"
         return reason

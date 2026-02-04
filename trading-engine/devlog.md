@@ -788,6 +788,48 @@ embedding = await service.embed_market_condition(timestamp=datetime.now(), sessi
 uv run pytest tests/test_services/test_market_condition_embedding.py -v
 ```
 
+#### 4.3 FuzzyPicker Vector Integration ✓
+- [x] Query similar trades from `TradeEmbedding`
+- [x] Adjust scores based on similar trade outcomes
+- [x] Integrate into `FuzzyPicker` scoring logic
+- [x] Test similarity-based scoring
+
+**Files Modified**:
+- `src/services/discovery/pickers/fuzzy.py` - Added similarity-based score adjustment
+- `tests/test_services/test_discovery_pickers.py` - Added similarity adjustment test
+
+**Features**:
+- **Similarity Search**: Queries `TradeEmbedding` for similar trade setups using vector similarity
+- **Outcome-Based Adjustment**: Calculates win rate from similar trades and adjusts score:
+  - High win rate (e.g., 80%) → positive adjustment (boosts score)
+  - Low win rate (e.g., 20%) → negative adjustment (reduces score)
+  - Neutral win rate (50%) → no adjustment
+- **Weighted Integration**: Similarity adjustment is weighted (default: 15% of final score)
+- **Context Matching**: Builds context text from current market data (symbol, price, RSI, SMAs, volume) to match trade embedding format
+- **Graceful Degradation**: If similarity search fails or no similar trades found, continues with base score
+
+**Adjustment Calculation**:
+- Finds top 5 similar trades (cosine similarity > 0.7)
+- Calculates win rate: `wins / (wins + losses)`
+- Converts to adjustment: `(win_rate - 0.5) * 2.0` (range: -1.0 to +1.0)
+- Final score: `base_score + (adjustment * similarity_weight)`
+
+**Usage**:
+```python
+# With DB session for similarity search
+picker = FuzzyPicker(
+    similarity_weight=0.15,  # 15% weight for similarity adjustment
+    db_session=session,
+)
+results = await picker.pick()
+```
+
+**Testing**:
+```bash
+# Run picker tests (includes similarity adjustment)
+uv run pytest tests/test_services/test_discovery_pickers.py::TestFuzzyPicker -v
+```
+
 ---
 
 ## TODO: Symbol Discovery System

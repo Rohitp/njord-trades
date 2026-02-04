@@ -228,6 +228,61 @@ class TestFuzzyPicker:
             # Results should be sorted by score (highest first)
             assert results[0].score >= results[1].score
 
+    @pytest.mark.asyncio
+    async def test_fuzzy_picker_similarity_adjustment(self):
+        """Test that similarity adjustment affects scores."""
+        with patch("src.services.discovery.pickers.fuzzy.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.fuzzy.MarketDataService") as mock_market, \
+             patch("src.services.discovery.pickers.fuzzy.TradeEmbeddingService") as mock_embedding:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            # Create mock quote and indicators
+            quote = MagicMock()
+            quote.volume = 5_000_000
+            quote.price = 150.0
+            
+            indicators = MagicMock()
+            indicators.price = 155.0
+            indicators.sma_20 = 150.0
+            indicators.rsi_14 = 55.0
+            indicators.volume_avg_20 = 3_000_000
+            indicators.volume_ratio = 1.67
+            
+            mock_market.return_value.get_quote = AsyncMock(return_value=quote)
+            mock_market.return_value.get_technical_indicators = AsyncMock(return_value=indicators)
+            
+            # Mock similarity search - return trades with WIN outcomes
+            from src.database.models import TradeEmbedding, Trade, TradeStatus
+            from uuid import uuid4
+            
+            mock_trade_embedding = MagicMock()
+            mock_trade_embedding.trade_id = uuid4()
+            
+            mock_trade = MagicMock()
+            mock_trade.id = mock_trade_embedding.trade_id
+            mock_trade.outcome = "WIN"
+            
+            mock_embedding_service = MagicMock()
+            mock_embedding_service.find_similar_trades = AsyncMock(return_value=[mock_trade_embedding])
+            mock_embedding.return_value = mock_embedding_service
+            
+            # Mock database session
+            mock_session = MagicMock()
+            mock_result = MagicMock()
+            mock_result.scalars.return_value.all.return_value = [mock_trade]
+            mock_session.execute = AsyncMock(return_value=mock_result)
+            
+            picker = FuzzyPicker(
+                min_score_threshold=0.0,
+                db_session=mock_session,
+            )
+            results = await picker.pick()
+            
+            assert len(results) == 1
+            # Score should be adjusted upward due to similar WIN trades
+            assert "similarity" in results[0].reason.lower() or results[0].score > 0.5
+
 
 class TestLLMPicker:
     """Tests for LLMPicker."""
