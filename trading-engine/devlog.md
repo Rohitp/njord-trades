@@ -707,7 +707,7 @@ uv run pytest tests/test_services/test_discovery*.py -v
 
 ## Phase 4: Vector Integration (IN PROGRESS)
 
-**Status**: IN PROGRESS
+**Status**: IN PROGRESS | Phases 4.1-4.4 complete
 
 #### 4.1 Trade Embeddings ✓
 - [x] Created `src/services/embeddings/trade_embedding.py`
@@ -828,6 +828,63 @@ results = await picker.pick()
 ```bash
 # Run picker tests (includes similarity adjustment)
 uv run pytest tests/test_services/test_discovery_pickers.py::TestFuzzyPicker -v
+```
+
+#### 4.4 LLMPicker Vector Integration ✓
+- [x] Query similar market conditions from `MarketConditionEmbedding`
+- [x] Include similar conditions in LLM prompt
+- [x] Test context enrichment
+
+**Files Modified**:
+- `src/services/discovery/pickers/llm.py` - Added vector similarity integration
+- `tests/test_services/test_discovery_pickers.py` - Added vector integration tests
+
+**Features**:
+- **Similarity Search**: Queries `MarketConditionEmbedding` for similar historical market conditions using vector similarity
+- **Context Enrichment**: Includes top 3 similar historical conditions in the LLM prompt under "SIMILAR HISTORICAL MARKET CONDITIONS"
+- **Market Context Building**: `_build_market_context_text()` formats current market conditions for similarity search
+- **Graceful Degradation**: Continues working if similarity search fails or no `db_session` is provided (backward compatible)
+- **Optional Integration**: Requires `db_session` parameter to enable vector similarity (optional for backward compatibility)
+
+**How It Works**:
+1. When `LLMPicker` is initialized with a `db_session`, it queries similar historical market conditions
+2. The current market context (from `context["market_conditions"]`) is formatted into text
+3. Vector similarity search finds the top 3 most similar historical market conditions
+4. Similar conditions are included in the LLM prompt with:
+   - Date of the condition
+   - Context text (VIX, SPY trend, sector performance)
+   - Relevant metadata (if available)
+5. The LLM uses this historical context to inform recommendations based on what worked in similar market regimes
+
+**Prompt Enhancement**:
+The LLM prompt now includes a "SIMILAR HISTORICAL MARKET CONDITIONS" section that shows:
+```
+SIMILAR HISTORICAL MARKET CONDITIONS:
+These are market conditions from the past that are similar to the current state.
+Use these to inform your recommendations based on what worked well in similar regimes.
+
+  1. Date: 2024-01-15
+     Conditions: VIX: 18.5 (Moderate volatility) | SPY: $450.0, Bullish trend
+     Details: vix: 18.5, spy_trend: bullish
+```
+
+**Usage**:
+```python
+# With vector similarity (recommended)
+picker = LLMPicker(db_session=session)
+results = await picker.pick(context={
+    "market_conditions": {"volatility": "Moderate", "trend": "Bullish"}
+})
+
+# Without vector similarity (backward compatible)
+picker = LLMPicker()  # No db_session
+results = await picker.pick(context={...})
+```
+
+**Testing**:
+```bash
+# Run LLM picker vector integration tests
+uv run pytest tests/test_services/test_discovery_pickers.py::TestLLMPicker::test_llm_picker_vector_integration_* -v
 ```
 
 ---
@@ -1152,7 +1209,7 @@ tests/
 │   └── test_graph.py           # Graph compilation, execution, runner
 ```
 
-Current: **79 tests passing**
+Current: **165+ tests passing** (includes discovery, embeddings, vector integration)
 
 ---
 
@@ -1176,4 +1233,4 @@ Current: **79 tests passing**
 
 ---
 
-*Last updated: 2026-02-04*
+*Last updated: 2026-02-04 (Phase 4.4: LLMPicker Vector Integration complete)*

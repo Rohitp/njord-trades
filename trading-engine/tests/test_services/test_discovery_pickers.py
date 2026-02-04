@@ -724,3 +724,167 @@ class TestLLMPicker:
             assert results[0].score == 1.0  # Clamped from 1.5
             assert results[1].score == 0.0  # Clamped from -0.5
 
+    @pytest.mark.asyncio
+    async def test_llm_picker_vector_integration_queries_similar_conditions(self):
+        """Test that LLMPicker queries similar market conditions when db_session is provided."""
+        with patch("src.services.discovery.pickers.llm.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.llm.retry_llm_call") as mock_llm, \
+             patch("src.services.discovery.pickers.llm.MarketConditionService") as mock_market_condition:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            # Mock similar conditions
+            from src.database.models import MarketConditionEmbedding
+            from datetime import datetime
+            
+            mock_condition1 = MagicMock(spec=MarketConditionEmbedding)
+            mock_condition1.timestamp = datetime(2024, 1, 15)
+            mock_condition1.context_text = "VIX: 18.5 (Moderate volatility) | SPY: $450.0, Bullish trend (+5.2% vs SMA_200)"
+            mock_condition1.condition_metadata = {"vix": 18.5, "spy_trend": "bullish"}
+            
+            mock_condition2 = MagicMock(spec=MarketConditionEmbedding)
+            mock_condition2.timestamp = datetime(2024, 1, 10)
+            mock_condition2.context_text = "VIX: 20.1 (Moderate volatility) | SPY: $445.0, Bullish trend (+4.8% vs SMA_200)"
+            mock_condition2.condition_metadata = {"vix": 20.1, "spy_trend": "bullish"}
+            
+            mock_service = MagicMock()
+            mock_service.find_similar_conditions = AsyncMock(return_value=[mock_condition1, mock_condition2])
+            mock_market_condition.return_value = mock_service
+            
+            # Mock LLM response
+            mock_response = MagicMock()
+            mock_response.content = '[]'
+            mock_llm.return_value = mock_response
+            
+            mock_session = MagicMock()
+            picker = LLMPicker(db_session=mock_session)
+            
+            context = {
+                "market_conditions": {"volatility": "Moderate", "trend": "Bullish"}
+            }
+            
+            results = await picker.pick(context=context)
+            
+            # Verify similarity search was called
+            assert mock_service.find_similar_conditions.called
+            call_args = mock_service.find_similar_conditions.call_args
+            assert call_args[1]["session"] == mock_session
+            assert call_args[1]["limit"] == 3
+
+    @pytest.mark.asyncio
+    async def test_llm_picker_vector_integration_includes_similar_in_prompt(self):
+        """Test that similar conditions are included in the LLM prompt."""
+        with patch("src.services.discovery.pickers.llm.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.llm.retry_llm_call") as mock_llm, \
+             patch("src.services.discovery.pickers.llm.MarketConditionService") as mock_market_condition:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            # Mock similar conditions
+            from src.database.models import MarketConditionEmbedding
+            from datetime import datetime
+            
+            mock_condition = MagicMock(spec=MarketConditionEmbedding)
+            mock_condition.timestamp = datetime(2024, 1, 15)
+            mock_condition.context_text = "VIX: 18.5 (Moderate volatility) | SPY: $450.0, Bullish trend"
+            mock_condition.condition_metadata = {"vix": 18.5}
+            
+            mock_service = MagicMock()
+            mock_service.find_similar_conditions = AsyncMock(return_value=[mock_condition])
+            mock_market_condition.return_value = mock_service
+            
+            # Mock LLM response
+            mock_response = MagicMock()
+            mock_response.content = '[]'
+            mock_llm.return_value = mock_response
+            
+            mock_session = MagicMock()
+            picker = LLMPicker(db_session=mock_session)
+            
+            context = {
+                "market_conditions": {"volatility": "Moderate", "trend": "Bullish"}
+            }
+            
+            # Patch _build_user_prompt to capture what it receives
+            original_build = picker._build_user_prompt
+            captured_similar_conditions = []
+            
+            def capture_build_prompt(candidate_symbols, context_dict, similar_conditions_list):
+                captured_similar_conditions.extend(similar_conditions_list or [])
+                return original_build(candidate_symbols, context_dict, similar_conditions_list)
+            
+            picker._build_user_prompt = capture_build_prompt
+            
+            await picker.pick(context=context)
+            
+            # Verify similarity search was called
+            assert mock_service.find_similar_conditions.called
+            
+            # Verify similar conditions were passed to prompt builder
+            assert len(captured_similar_conditions) == 1
+            assert captured_similar_conditions[0] == mock_condition
+            
+            # Verify the prompt contains similar conditions by checking the built prompt
+            prompt = picker._build_user_prompt(["AAPL"], context, [mock_condition])
+            assert "SIMILAR HISTORICAL MARKET CONDITIONS" in prompt
+            assert "2024-01-15" in prompt  # Date from mock condition
+            assert "VIX: 18.5" in prompt  # Context text from mock condition
+
+    @pytest.mark.asyncio
+    async def test_llm_picker_vector_integration_graceful_degradation(self):
+        """Test that LLMPicker continues working if similarity search fails."""
+        with patch("src.services.discovery.pickers.llm.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.llm.retry_llm_call") as mock_llm, \
+             patch("src.services.discovery.pickers.llm.MarketConditionService") as mock_market_condition:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            # Mock similarity search failure
+            mock_service = MagicMock()
+            mock_service.find_similar_conditions = AsyncMock(side_effect=Exception("DB error"))
+            mock_market_condition.return_value = mock_service
+            
+            # Mock LLM response
+            mock_response = MagicMock()
+            mock_response.content = '[{"symbol": "AAPL", "score": 0.8, "reason": "Good"}]'
+            mock_llm.return_value = mock_response
+            
+            mock_session = MagicMock()
+            picker = LLMPicker(db_session=mock_session)
+            
+            context = {
+                "market_conditions": {"volatility": "Moderate", "trend": "Bullish"}
+            }
+            
+            results = await picker.pick(context=context)
+            
+            # Should still return results despite similarity search failure
+            assert len(results) == 1
+            assert results[0].symbol == "AAPL"
+
+    @pytest.mark.asyncio
+    async def test_llm_picker_vector_integration_no_session(self):
+        """Test that LLMPicker works without db_session (backward compatibility)."""
+        with patch("src.services.discovery.pickers.llm.AlpacaAssetSource") as mock_source, \
+             patch("src.services.discovery.pickers.llm.retry_llm_call") as mock_llm:
+            
+            mock_source.return_value.get_stocks = AsyncMock(return_value=["AAPL"])
+            
+            # Mock LLM response
+            mock_response = MagicMock()
+            mock_response.content = '[{"symbol": "AAPL", "score": 0.8, "reason": "Good"}]'
+            mock_llm.return_value = mock_response
+            
+            # No db_session provided
+            picker = LLMPicker()
+            
+            context = {
+                "market_conditions": {"volatility": "Moderate", "trend": "Bullish"}
+            }
+            
+            results = await picker.pick(context=context)
+            
+            # Should work normally without similarity search
+            assert len(results) == 1
+            assert results[0].symbol == "AAPL"
+

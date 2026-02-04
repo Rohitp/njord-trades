@@ -12,9 +12,12 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.config import settings
 from src.services.discovery.pickers.base import PickerResult, SymbolPicker
 from src.services.discovery.sources.alpaca import AlpacaAssetSource
+from src.services.embeddings.market_condition import MarketConditionService
 from src.services.market_data.service import MarketDataService
 from src.utils.llm import parse_json_list
 from src.utils.logging import get_logger
@@ -78,6 +81,7 @@ class LLMPicker(SymbolPicker):
         self,
         model_name: str | None = None,
         max_candidates: int = 50,  # Limit candidates to avoid token limits
+        db_session: AsyncSession | None = None,
     ):
         """
         Initialize LLMPicker.
@@ -85,13 +89,16 @@ class LLMPicker(SymbolPicker):
         Args:
             model_name: LLM model to use (default: from config)
             max_candidates: Maximum number of candidate symbols to evaluate
+            db_session: Optional database session for vector similarity search
         """
         self.model_name = model_name or settings.discovery.llm_picker_model
         self.max_candidates = max_candidates
+        self.db_session = db_session
         self.llm = self._create_llm()
 
         self.asset_source = AlpacaAssetSource()
         self.market_data = MarketDataService()
+        self.market_condition_service = MarketConditionService()
 
     @property
     def name(self) -> str:
@@ -164,8 +171,28 @@ class LLMPicker(SymbolPicker):
             log.warning("llm_picker_no_alpaca", error=str(e))
             return []  # Can't fetch symbols without Alpaca
 
-        # Build prompt with context
-        user_prompt = self._build_user_prompt(candidate_symbols, context)
+        # Query similar market conditions if database session is available
+        similar_conditions = []
+        if self.db_session:
+            try:
+                # Build current market condition context
+                current_context = self._build_market_context_text(context)
+                if current_context:
+                    similar_conditions = await self.market_condition_service.find_similar_conditions(
+                        context_text=current_context,
+                        limit=3,  # Top 3 similar conditions
+                        session=self.db_session,
+                    )
+                    log.debug(
+                        "llm_picker_similar_conditions",
+                        count=len(similar_conditions),
+                    )
+            except Exception as e:
+                log.warning("llm_picker_similarity_search_failed", error=str(e))
+                # Continue without similar conditions (graceful degradation)
+
+        # Build prompt with context and similar conditions
+        user_prompt = self._build_user_prompt(candidate_symbols, context, similar_conditions)
 
         try:
             # Call LLM with retry logic
@@ -208,13 +235,19 @@ class LLMPicker(SymbolPicker):
             log.error("llm_picker_error", error=str(e), exc_info=True)
             return []  # Return empty on error (graceful degradation)
 
-    def _build_user_prompt(self, candidate_symbols: List[str], context: dict | None = None) -> str:
+    def _build_user_prompt(
+        self,
+        candidate_symbols: List[str],
+        context: dict | None = None,
+        similar_conditions: list | None = None,
+    ) -> str:
         """
-        Build user prompt with portfolio context and market conditions.
+        Build user prompt with portfolio context, market conditions, and similar historical conditions.
 
         Args:
             candidate_symbols: List of symbols to evaluate
             context: Optional context (portfolio, market conditions)
+            similar_conditions: List of similar historical market conditions
 
         Returns:
             Formatted prompt string
@@ -237,16 +270,32 @@ class LLMPicker(SymbolPicker):
         else:
             lines.append("CURRENT PORTFOLIO: Not provided")
 
-        # Market conditions
+        # Current market conditions
         if context and "market_conditions" in context:
             market = context["market_conditions"]
-            lines.append("\nMARKET CONDITIONS:")
+            lines.append("\nCURRENT MARKET CONDITIONS:")
             if "volatility" in market:
                 lines.append(f"  - Volatility: {market['volatility']}")
             if "trend" in market:
                 lines.append(f"  - Overall Trend: {market['trend']}")
             if "sector_rotation" in market:
                 lines.append(f"  - Sector Rotation: {market['sector_rotation']}")
+
+        # Similar historical market conditions (vector similarity search)
+        if similar_conditions:
+            lines.append("\nSIMILAR HISTORICAL MARKET CONDITIONS:")
+            lines.append("These are market conditions from the past that are similar to the current state.")
+            lines.append("Use these to inform your recommendations based on what worked well in similar regimes.")
+            for i, condition in enumerate(similar_conditions[:3], 1):  # Top 3
+                timestamp = condition.timestamp.strftime("%Y-%m-%d") if condition.timestamp else "Unknown"
+                context_summary = condition.context_text[:200] + "..." if len(condition.context_text) > 200 else condition.context_text
+                lines.append(f"\n  {i}. Date: {timestamp}")
+                lines.append(f"     Conditions: {context_summary}")
+                if condition.condition_metadata:
+                    # Include any relevant metadata (e.g., VIX level, SPY trend)
+                    metadata_str = ", ".join([f"{k}: {v}" for k, v in condition.condition_metadata.items() if v is not None][:3])
+                    if metadata_str:
+                        lines.append(f"     Details: {metadata_str}")
 
         # Candidate symbols
         lines.append(f"\nCANDIDATE SYMBOLS ({len(candidate_symbols)} total):")
@@ -259,10 +308,37 @@ class LLMPicker(SymbolPicker):
 
         # Instructions
         lines.append("\nTASK:")
-        lines.append("Analyze the portfolio context and market conditions above.")
+        lines.append("Analyze the portfolio context, current market conditions, and similar historical conditions above.")
         lines.append("Select the most promising symbols from the candidate list.")
-        lines.append("Consider diversification, momentum, and risk-adjusted opportunities.")
+        lines.append("Consider diversification, momentum, risk-adjusted opportunities, and lessons from similar market regimes.")
         lines.append("Return a JSON array with your top recommendations (score 0.0-1.0).")
 
         return "\n".join(lines)
+
+    def _build_market_context_text(self, context: dict | None = None) -> str:
+        """
+        Build a text representation of current market conditions for similarity search.
+
+        Args:
+            context: Optional context containing market conditions
+
+        Returns:
+            Formatted text describing current market conditions
+        """
+        parts = []
+
+        if context and "market_conditions" in context:
+            market = context["market_conditions"]
+            if "volatility" in market:
+                parts.append(f"Volatility: {market['volatility']}")
+            if "trend" in market:
+                parts.append(f"Trend: {market['trend']}")
+            if "sector_rotation" in market:
+                parts.append(f"Sector Rotation: {market['sector_rotation']}")
+
+        # If no context provided, return empty string (similarity search will be skipped)
+        if not parts:
+            return ""
+
+        return " | ".join(parts)
 

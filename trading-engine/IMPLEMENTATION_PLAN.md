@@ -113,10 +113,10 @@
 - [x] Integrate into `FuzzyPicker` scoring logic
 - [x] Test similarity-based scoring
 
-### 4.4 LLMPicker Vector Integration
-- [ ] Query similar market conditions
-- [ ] Include similar conditions in LLM prompt
-- [ ] Test context enrichment
+### 4.4 LLMPicker Vector Integration ✓
+- [x] Query similar market conditions
+- [x] Include similar conditions in LLM prompt
+- [x] Test context enrichment
 
 ### 4.5 Validator Vector Integration
 - [ ] Query similar failed setups from `TradeEmbedding`
