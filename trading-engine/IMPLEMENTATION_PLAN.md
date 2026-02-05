@@ -245,6 +245,12 @@
 - [x] Calculate A/B test metrics
 - [x] Create API endpoint `GET /api/discovery/ab-test`
 - [x] Write unit tests (service and API)
+- [x] **Improvements**:
+  - [x] Add `suggested_price` field to capture price at suggestion time (realistic paper trading)
+  - [x] Update `SymbolDiscoveryService` to fetch and store prices when creating suggestions
+  - [x] Update `paper_tracker` to use `suggested_price` instead of fixed $1k notional
+  - [x] Show pending suggestions in performance API (don't hide pickers waiting for forward return calculation)
+  - [x] Add pagination to `/api/discovery/performance` endpoint
 
 ---
 
