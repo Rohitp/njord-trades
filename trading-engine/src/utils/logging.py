@@ -23,9 +23,17 @@ def setup_logging() -> None:
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
 
+    # Custom filter_by_level that handles None loggers (APScheduler compatibility)
+    def safe_filter_by_level(logger, method_name, event_dict):
+        """Filter by log level, handling None loggers gracefully."""
+        if logger is None:
+            # If logger is None, don't filter (allow through)
+            return event_dict
+        return structlog.stdlib.filter_by_level(logger, method_name, event_dict)
+
     # Processors for stdlib logging (uvicorn, sqlalchemy, etc.)
     stdlib_processors = [
-        structlog.stdlib.filter_by_level,
+        safe_filter_by_level,  # Use safe version instead of structlog.stdlib.filter_by_level
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
@@ -67,6 +75,12 @@ def setup_logging() -> None:
     # Quiet noisy loggers
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+    
+    # Configure APScheduler logger to work with structlog
+    # APScheduler uses standard logging - let it propagate to root logger
+    apscheduler_logger = logging.getLogger("apscheduler")
+    apscheduler_logger.setLevel(logging.INFO)
+    apscheduler_logger.propagate = True  # Propagate to root logger (don't add handler directly)
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
