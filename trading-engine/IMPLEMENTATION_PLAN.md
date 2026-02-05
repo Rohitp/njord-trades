@@ -194,9 +194,9 @@
 
 ---
 
-## Phase 7: Alert System (IN PROGRESS)
+## Phase 7: Alert System ✓
 
-**Status**: Phase 7.1 & 7.2 COMPLETE | Phase 7.3 PLANNED | See devlog.md "Phase 7: Alert System" section
+**Status**: COMPLETE | See devlog.md "Phase 7: Alert System" section
 
 ### 7.1 Telegram Integration ✓
 - [x] Create `src/services/alerts/__init__.py`
@@ -220,35 +220,17 @@
 - [x] Write unit tests for Telegram client and alert service
 - [ ] Add daily P&L summary background job (can be done in Phase 8 or later)
 
-### 7.3 Telegram Bot Query Interface (PLANNED)
-- [ ] Create `src/services/alerts/telegram_bot.py` (bot command handler)
-- [ ] Implement webhook endpoint for Telegram updates
-- [ ] Add command handlers:
-  - `/status` - System status (trading enabled, circuit breaker, portfolio value)
-  - `/portfolio` - Current holdings, cash, exposure
-  - `/trades` - Recent trades (last N trades)
-  - `/metrics` - Performance metrics (Sharpe, win rate, drawdown, P&L)
-  - `/logs` - Query recent logs (filter by level, component, time range)
-  - `/query` - Natural language query (uses LLM to convert to SQL/API calls)
-- [ ] Integrate with existing services:
-  - Portfolio state queries
-  - Trade history queries
-  - Performance analytics
-  - Log search (structured log queries)
-- [ ] Add authentication (verify chat_id matches configured chat_id)
-- [ ] Add rate limiting (prevent spam)
-- [ ] Test all commands
-- [ ] Document bot commands in README
+**Note**: Telegram Bot Query Interface moved to Phase 9.1 (fits better with observability stack)
 
 ---
 
 ## Phase 8: Discovery Analysis
 
-### 8.1 Forward Return Tracking
-- [ ] Add forward return fields to `PickerSuggestion` model
-- [ ] Create background job to calculate 1d/5d/20d returns
-- [ ] Update suggestions with actual returns
-- [ ] Test return calculation
+### 8.1 Forward Return Tracking ✓
+- [x] Add forward return fields to `PickerSuggestion` model (already existed)
+- [x] Create background job to calculate 1d/5d/20d returns
+- [x] Update suggestions with actual returns
+- [x] Test return calculation (unit tests complete)
 
 ### 8.2 Performance API
 - [ ] Create `src/api/routers/discovery.py`
@@ -268,13 +250,69 @@
 
 **Status**: PLANNED | Grafana + LangSmith + Ops Portal architecture
 
-**Note**: Telegram bot (Phase 7.3) provides basic query capabilities for quick checks. Full observability stack provides dashboards, tracing, and chat interface.
+### 9.1 Telegram Bot Query Interface (REQUIRED)
 
-### 9.1 Telegram Bot Query Interface (See Phase 7.3)
-- [ ] Implemented in Phase 7.3
-- [ ] Provides basic query capabilities via Telegram commands
-- [ ] Quick status checks and simple queries
-- [ ] Mobile-friendly for on-the-go monitoring
+**Status**: PLANNED | Provides basic query capabilities via Telegram commands for quick checks
+
+**Note**: This provides mobile-friendly query interface. Full observability stack (Grafana + Ops Portal) provides dashboards, tracing, and advanced chat interface.
+
+#### 9.1.1 Bot Implementation
+- [ ] Create `src/services/alerts/telegram_bot.py` (bot command handler)
+- [ ] Implement webhook endpoint `POST /api/system/telegram/webhook` for Telegram updates
+- [ ] Parse incoming Telegram messages and commands
+- [ ] Add authentication (verify chat_id matches configured chat_id)
+- [ ] Add rate limiting (prevent spam, e.g., max 10 commands per minute)
+- [ ] Handle errors gracefully (send error messages to user)
+
+#### 9.1.2 Command Handlers
+- [ ] `/status` - System status:
+  - Trading enabled/disabled
+  - Circuit breaker status
+  - Portfolio total value
+  - Cash available
+  - Number of positions
+- [ ] `/portfolio` - Current holdings:
+  - List all positions (symbol, quantity, value, P&L)
+  - Cash balance
+  - Sector allocation summary
+  - Total portfolio value
+- [ ] `/trades` - Recent trades:
+  - Last N trades (default: 10, configurable)
+  - Format: symbol, action, quantity, price, outcome, timestamp
+  - Optional: `/trades 20` for last 20 trades
+- [ ] `/metrics` - Performance metrics:
+  - Sharpe ratio (30-day)
+  - Win rate (30-day)
+  - Current drawdown
+  - Total P&L (today, week, month, all-time)
+  - Alpha vs deposits
+- [ ] `/logs` - Query recent logs:
+  - Filter by level (ERROR, WARNING, INFO)
+  - Filter by component (agent name, service name)
+  - Time range (last hour, day, week)
+  - Example: `/logs ERROR last_hour`
+- [ ] `/query` - Natural language query:
+  - Uses LLM to convert natural language to SQL/API calls
+  - Examples:
+    - "What trades did we make on AAPL this week?"
+    - "Show me all losing trades in the last month"
+    - "What's the current exposure to tech stocks?"
+  - Integrates with existing services (portfolio, trades, performance)
+
+#### 9.1.3 Service Integration
+- [ ] Integrate with portfolio state queries (`PortfolioState`, `Position` models)
+- [ ] Integrate with trade history queries (`Trade` model)
+- [ ] Integrate with performance analytics (calculate Sharpe, win rate, drawdown)
+- [ ] Integrate with log search (query structured logs from PostgreSQL or Loki)
+- [ ] Integrate with LangSmith for `/query` LLM calls (trace natural language queries)
+
+#### 9.1.4 Testing & Documentation
+- [ ] Test all commands with real Telegram bot
+- [ ] Test authentication (reject messages from unauthorized chat_id)
+- [ ] Test rate limiting (verify spam prevention)
+- [ ] Test error handling (invalid commands, service failures)
+- [ ] Document bot commands in README
+- [ ] Add command examples and usage guide
 
 ### 9.2 Grafana Integration (REQUIRED)
 
@@ -711,9 +749,9 @@
 - Phase 4 (Vector Integration) → Phase 9 (Ops Portal RAG)
 - Phase 5 (Event Monitor) → Can run independently
 - Phase 6 (Auto-Resume) → Can run independently
-- Phase 7 (Alerts) → Phase 7.3 (Telegram Bot Queries) → Phase 11 (Deployment)
+- Phase 7 (Alerts) → Phase 9 (Telegram Bot Queries) → Phase 11 (Deployment)
 - Phase 8 (Discovery Analysis) → Phase 12 (Discovery Production)
-- Phase 7.3 (Telegram Bot Queries) → Phase 9 (Ops Portal)
+- Phase 9.1 (Telegram Bot Queries) → Phase 9.4 (Ops Portal) - Both provide query interfaces
 - Phase 9 (Grafana) → Phase 11 (Deployment) - Prometheus required
 - Phase 9 (LangSmith) → Phase 9 (Ops Portal) - Tracing required
 - Phase 9 (Ops Portal) → Phase 1 (pgvector) + Phase 4 (Vector Integration) + Phase 9 (LangSmith)

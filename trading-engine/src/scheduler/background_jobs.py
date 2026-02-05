@@ -1,11 +1,12 @@
 """
-Background processing jobs for embeddings, discovery, and event monitoring.
+Background processing jobs for embeddings, discovery, event monitoring, and analysis.
 
 These jobs run asynchronously to avoid blocking API calls:
 - Trade embeddings: Generate embeddings for completed trades (hourly)
 - Market condition embeddings: Generate daily market condition embeddings (daily at market close)
 - Discovery cycle: Run symbol discovery (weekly)
 - Event monitor: Monitor price moves and trigger event cycles (every 60 seconds)
+- Forward returns: Calculate forward returns for picker suggestions (daily)
 """
 
 import asyncio
@@ -16,6 +17,7 @@ from src.database.connection import async_session_factory
 from src.scheduler.triggers import get_trading_timezone
 from src.services.embeddings.market_condition import MarketConditionService
 from src.services.embeddings.trade_embedding import TradeEmbeddingService
+from src.services.discovery.forward_returns import calculate_forward_returns_batch
 from src.services.discovery.service import SymbolDiscoveryService
 from src.utils.logging import get_logger
 
@@ -164,6 +166,33 @@ async def run_discovery_cycle_job() -> None:
         )
 
 
+async def calculate_forward_returns_job() -> None:
+    """
+    Background job to calculate forward returns for picker suggestions.
+
+    Runs daily to process suggestions that are old enough to calculate returns.
+    """
+    log.info("background_job_forward_returns_starting")
+
+    try:
+        from src.database.connection import async_session_factory
+
+        async with async_session_factory() as session:
+            processed = await calculate_forward_returns_batch(session, limit=100)
+
+            log.info(
+                "background_job_forward_returns_complete",
+                processed=processed,
+            )
+
+    except Exception as e:
+        log.error(
+            "background_job_forward_returns_failed",
+            error=str(e),
+            exc_info=True,
+        )
+
+
 def register_background_jobs(scheduler) -> None:
     """
     Register background processing jobs with scheduler.
@@ -234,5 +263,20 @@ def register_background_jobs(scheduler) -> None:
         max_instances=1,
     )
 
-    log.info("background_jobs_registered", job_count=4)
+    # Forward returns: Run daily at market close (4:00 PM ET)
+    scheduler.add_job(
+        calculate_forward_returns_job,
+        trigger=CronTrigger(
+            hour=16,  # 4:00 PM
+            minute=0,
+            day_of_week="mon-fri",
+            timezone=tz,
+        ),
+        id="background_forward_returns",
+        name="Calculate forward returns for picker suggestions (daily at close)",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    log.info("background_jobs_registered", job_count=5)
 
