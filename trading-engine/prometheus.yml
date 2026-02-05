@@ -1,0 +1,24 @@
+# Prometheus configuration for Trading Engine
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'trading-engine'
+    environment: 'development'
+
+# Scrape configurations
+scrape_configs:
+  # Trading Engine API metrics
+  - job_name: 'trading-engine'
+    static_configs:
+      - targets: ['host.docker.internal:8000']  # Adjust if running in Docker network
+        labels:
+          service: 'trading-engine'
+          instance: 'api'
+
+  # PostgreSQL exporter (optional - requires postgres_exporter container)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres_exporter:9187']
+

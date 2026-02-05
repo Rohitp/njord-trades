@@ -115,7 +115,7 @@ class DataAgent(BaseAgent):
 
         try:
             # Call LLM to analyze data
-            response = await self._call_llm(DATA_AGENT_SYSTEM_PROMPT, user_prompt)
+            response = await self._call_llm(DATA_AGENT_SYSTEM_PROMPT, user_prompt, state)
 
             # Parse response into Signal objects
             signals = self._parse_signals(response, market_context)

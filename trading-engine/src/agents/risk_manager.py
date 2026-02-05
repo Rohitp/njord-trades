@@ -273,7 +273,7 @@ class RiskManager(BaseAgent):
             List of RiskAssessment objects from LLM analysis
         """
         user_prompt = self._build_user_prompt(signals, state)
-        response = await self._call_llm(RISK_MANAGER_SYSTEM_PROMPT, user_prompt)
+        response = await self._call_llm(RISK_MANAGER_SYSTEM_PROMPT, user_prompt, state)
         return self._parse_assessments(response, signals)
 
     def _build_user_prompt(

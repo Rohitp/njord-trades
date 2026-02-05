@@ -241,3 +241,35 @@ class TestCircuitBreakerResumeEndpoint:
             assert data["success"] is False
             assert "error" in data["message"].lower()
 
+    def test_telegram_webhook(self, client: TestClient, mock_db_session: AsyncSession):
+        """Test the Telegram webhook endpoint."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        
+        # Mock TelegramBot and its send_message method
+        with patch("src.services.alerts.telegram_bot.TelegramBot") as mock_bot_class:
+            mock_bot = MagicMock()
+            mock_bot.handle_message = AsyncMock(return_value="Test response")
+            mock_bot.telegram = MagicMock()
+            mock_bot.telegram.send_message = AsyncMock(return_value=True)
+            mock_bot_class.return_value = mock_bot
+            
+            # Mock settings for chat_id check
+            with patch("src.services.alerts.telegram_bot.settings") as mock_settings:
+                mock_settings.alerts.telegram_chat_id = "12345"
+                
+                response = client.post(
+                    "/api/system/telegram/webhook",
+                    json={
+                        "message": {
+                            "chat": {"id": "12345"},
+                            "text": "/status",
+                        }
+                    },
+                )
+                
+                assert response.status_code == 200
+                data = response.json()
+                assert data["ok"] is True
+                mock_bot.handle_message.assert_called_once()
+                mock_bot.telegram.send_message.assert_called_once()
+

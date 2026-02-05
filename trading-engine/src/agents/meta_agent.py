@@ -127,7 +127,7 @@ class MetaAgent(BaseAgent):
             user_prompt = self._build_user_prompt(
                 validated_signals, assessment_map, validation_map, state
             )
-            response = await self._call_llm(META_AGENT_SYSTEM_PROMPT, user_prompt)
+            response = await self._call_llm(META_AGENT_SYSTEM_PROMPT, user_prompt, state)
             decisions = self._parse_decisions(response, validated_signals)
             state.final_decisions.extend(decisions)
 

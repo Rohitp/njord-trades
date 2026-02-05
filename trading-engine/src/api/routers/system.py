@@ -287,3 +287,48 @@ async def send_test_alert(
             "success": False,
             "message": f"Error sending test alert: {str(e)}",
         }
+
+
+@router.post("/telegram/webhook")
+async def telegram_webhook(
+    update: dict,
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Telegram webhook endpoint for bot commands.
+    
+    Receives Telegram updates and processes bot commands.
+    Supports commands: /status, /portfolio, /trades, /metrics, /logs, /query
+    
+    Authentication: Only processes messages from configured chat_id.
+    Rate limiting: Max 10 commands per minute per chat.
+    """
+    try:
+        from src.services.alerts.telegram_bot import TelegramBot
+        
+        # Extract message from update
+        message = update.get("message")
+        if not message:
+            # Could be an edited message, callback query, etc. - ignore for now
+            return {"ok": True}
+        
+        # Initialize bot and handle message
+        bot = TelegramBot(db_session=db)
+        response_text = await bot.handle_message(message)
+        
+        # Send response if we have one
+        if response_text:
+            await bot.telegram.send_message(
+                text=response_text,
+                parse_mode="HTML",
+            )
+        
+        return {"ok": True}
+    except Exception as e:
+        log.error(
+            "telegram_webhook_error",
+            error=str(e),
+            exc_info=True,
+        )
+        # Don't expose internal errors to Telegram
+        return {"ok": False, "error": "Internal error"}

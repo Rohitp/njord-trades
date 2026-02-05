@@ -17,6 +17,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from src.config import settings
+from src.utils.langfuse import langfuse_trace, langfuse_generation
 from src.utils.logging import get_logger
 from src.utils.retry import retry_llm_call
 from src.workflows.state import TradingState
@@ -215,6 +216,7 @@ class BaseAgent(ABC):
         self,
         system_prompt: str,
         user_prompt: str,
+        state: TradingState | None = None,
     ) -> str:
         """
         Call the LLM with system and user prompts.
@@ -227,6 +229,7 @@ class BaseAgent(ABC):
         Args:
             system_prompt: The agent's role and instructions
             user_prompt: The specific request with context data
+            state: Optional TradingState for trace metadata (cycle_id, trace_id)
 
         Returns:
             The LLM's response text
@@ -239,15 +242,59 @@ class BaseAgent(ABC):
             HumanMessage(content=user_prompt),
         ]
 
+        # Prepare Langfuse metadata
+        trace_metadata = {
+            "agent": self.name,
+            "model": self.model_name,
+            "provider": getattr(self.llm, "_llm_type", "unknown"),
+        }
+        
+        # Add cycle context if available
+        if state:
+            trace_metadata["cycle_id"] = str(state.cycle_id)
+            trace_metadata["cycle_type"] = state.cycle_type
+            if state.trace_id:
+                trace_metadata["trace_id"] = state.trace_id
+            if state.symbols:
+                trace_metadata["symbols"] = state.symbols
+
+        # Convert messages to dict format for Langfuse
+        input_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
         async def _invoke():
             response = await self.llm.ainvoke(messages)
             return response.content
 
-        # Use retry wrapper with context for logging
-        result = await retry_llm_call(
-            _invoke,
-            context=f"{self.name} LLM call",
-        )
+        # Use Langfuse tracing if enabled
+        session_id = str(state.cycle_id) if state else None
+        trace_name = f"{self.name}_llm_call"
+        
+        with langfuse_trace(
+            name=trace_name,
+            metadata=trace_metadata,
+            session_id=session_id,
+        ) as trace:
+            # Use retry wrapper with context for logging
+            result = await retry_llm_call(
+                _invoke,
+                context=f"{self.name} LLM call",
+            )
+
+            # Log generation to Langfuse
+            langfuse_generation(
+                trace=trace,
+                name=f"{self.name}_generation",
+                model=self.model_name,
+                input_messages=input_messages,
+                output=result,
+                metadata={
+                    **trace_metadata,
+                    "response_length": len(result) if result else 0,
+                },
+            )
 
         # Log provider used (extract from llm object if possible)
         provider_used = getattr(self.llm, "_llm_type", "unknown")

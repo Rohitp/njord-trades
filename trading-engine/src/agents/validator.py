@@ -155,7 +155,7 @@ class Validator(BaseAgent):
             user_prompt = self._build_user_prompt(
                 approved_signals, assessment_map, state, similar_failures_map
             )
-            response = await self._call_llm(VALIDATOR_SYSTEM_PROMPT, user_prompt)
+            response = await self._call_llm(VALIDATOR_SYSTEM_PROMPT, user_prompt, state)
             validations = self._parse_validations(
                 response, approved_signals, similar_failures_map
             )

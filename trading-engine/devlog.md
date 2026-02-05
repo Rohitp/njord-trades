@@ -1803,4 +1803,143 @@ curl -X POST http://localhost:8000/api/system/alerts/test
 
 ---
 
-*Last updated: 2026-02-04 (Phase 7.1 & 7.3: Telegram alerts complete)*
+## Phase 9: Observability & Operations Portal
+
+**Status**: IN PROGRESS | Grafana + Langfuse + Telegram Bot architecture
+
+### 9.1 Telegram Bot Query Interface ✓
+
+**Status**: COMPLETE | Provides mobile-friendly command interface for quick system queries
+
+**Implementation**:
+- Created `TelegramBot` class in `src/services/alerts/telegram_bot.py`
+- Implemented webhook endpoint `POST /api/system/telegram/webhook`
+- Added authentication (verifies chat_id matches configured chat_id)
+- Added rate limiting (max 10 commands per minute per chat)
+- Graceful error handling with user-friendly error messages
+
+**Command Handlers**:
+- `/status` - System status (trading enabled, circuit breaker, portfolio value, cash, positions)
+- `/portfolio` - Current holdings (positions with P&L, cash, sector allocation)
+- `/trades [N]` - Recent trades (last N trades, default 10, max 50)
+- `/metrics` - Performance metrics (win rate, drawdown, P&L by period, alpha vs deposits)
+- `/logs [LEVEL] [RANGE]` - Query logs (basic implementation using events table)
+- `/query [QUESTION]` - Natural language queries (placeholder for Phase 9.4)
+- `/help` - Command help
+
+**Features**:
+- HTML formatting for rich text responses
+- Emoji indicators for status (✅/❌/🔴/📈/📉)
+- Rate limiting prevents spam
+- Authentication ensures only authorized chats can query
+- Error handling with graceful degradation
+
+**Files Created**:
+- `src/services/alerts/telegram_bot.py` - Bot command handler
+- `tests/unit/services/test_telegram_bot.py` - Comprehensive unit tests
+
+**Files Modified**:
+- `src/api/routers/system.py` - Added webhook endpoint
+
+### 9.2 Grafana Integration ✓
+
+**Status**: COMPLETE (Basic Setup) | Infrastructure ready, dashboards can be created via UI
+
+**9.2.1 Prometheus Setup** ✓:
+- Added Prometheus to `docker-compose.yml`
+- Created `prometheus.yml` configuration file
+- Configured scraping from trading engine `/metrics` endpoint
+- Set retention policy (30 days)
+- Accessible at `http://localhost:9045`
+
+**9.2.2 Grafana Setup** ✓:
+- Added Grafana to `docker-compose.yml`
+- Configured persistent storage
+- Set up Prometheus as data source (auto-provisioned)
+- Set up PostgreSQL as data source (auto-provisioned)
+- Default credentials: admin/admin
+- Accessible at `http://localhost:3045`
+
+**9.2.3 Grafana Dashboards** ✓ (Template Created):
+- Created basic Portfolio dashboard template (`grafana/dashboards/portfolio.json`)
+- Dashboard includes:
+  - Portfolio value (time series)
+  - Cash vs deployed capital (pie chart)
+  - Position breakdown (table)
+  - Sector allocation (bar chart)
+- Additional dashboards can be created via Grafana UI or added as JSON files
+
+**Files Created**:
+- `prometheus.yml` - Prometheus configuration
+- `grafana/provisioning/datasources/prometheus.yml` - Data source provisioning
+- `grafana/provisioning/dashboards/default.yml` - Dashboard provisioning
+- `grafana/dashboards/portfolio.json` - Portfolio dashboard template
+
+**Files Modified**:
+- `docker-compose.yml` - Added Prometheus and Grafana services
+
+**Next Steps**:
+- Create additional dashboards (Performance, Trading Activity, Discovery, Circuit Breaker, System Metrics)
+- Configure Grafana alerts (Phase 9.2.4)
+- Set up Loki for log aggregation (Phase 9.2.5)
+
+### 9.3 Langfuse Integration ✓
+
+**Status**: COMPLETE | All LLM calls instrumented with tracing
+
+**Implementation**:
+- Added `langfuse>=2.0.0` to dependencies
+- Created `src/utils/langfuse.py` with tracing utilities:
+  - `get_langfuse_client()` - Lazy initialization of Langfuse client
+  - `langfuse_trace()` - Context manager for traces
+  - `langfuse_span()` - Context manager for spans
+  - `langfuse_generation()` - Log LLM generations
+- Integrated into `BaseAgent._call_llm()` method
+- All agent LLM calls now automatically traced with:
+  - Trace metadata (agent name, model, provider, cycle_id, trace_id, symbols)
+  - Input messages (system + user prompts)
+  - Output text
+  - Response length
+
+**Configuration**:
+```bash
+LANGFUSE_PUBLIC_KEY=your_public_key
+LANGFUSE_SECRET_KEY=your_secret_key
+LANGFUSE_HOST=https://cloud.langfuse.com  # or http://localhost:3000 for self-hosted
+LANGFUSE_TRACING_ENABLED=true
+```
+
+**Trace Metadata**:
+- `agent`: Agent name (DataAgent, RiskManager, Validator, MetaAgent)
+- `model`: Model name (e.g., gpt-4o, claude-3-5-sonnet)
+- `provider`: Provider (openai, anthropic, google, deepseek)
+- `cycle_id`: Trading cycle UUID
+- `trace_id`: HTTP request trace ID (for distributed tracing)
+- `cycle_type`: "scheduled" or "event"
+- `symbols`: List of symbols being analyzed
+
+**Files Created**:
+- `src/utils/langfuse.py` - Langfuse integration utilities
+- `tests/unit/utils/test_langfuse.py` - Unit tests
+
+**Files Modified**:
+- `pyproject.toml` - Added langfuse dependency
+- `src/agents/base.py` - Integrated Langfuse tracing into `_call_llm()`
+- `src/agents/data_agent.py` - Pass state to `_call_llm()` for trace metadata
+- `src/agents/risk_manager.py` - Pass state to `_call_llm()` for trace metadata
+- `src/agents/validator.py` - Pass state to `_call_llm()` for trace metadata
+- `src/agents/meta_agent.py` - Pass state to `_call_llm()` for trace metadata
+
+**Testing**:
+- Unit tests verify client initialization, error handling, and graceful degradation
+- Integration tests verify traces are created correctly (can be added in Phase 10)
+
+### 9.4 Operations Portal
+
+**Status**: PLANNED | FastAPI/Next.js portal with chat interface and deep links
+
+**Note**: This phase will be implemented after core observability is in place. The Telegram bot (Phase 9.1) provides basic query capabilities in the meantime.
+
+---
+
+*Last updated: 2026-02-05 (Phase 9.1, 9.2, 9.3: Observability infrastructure complete)*
