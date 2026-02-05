@@ -239,6 +239,7 @@ class PickerPerformanceResponse(BaseModel):
     picker_name: str
     total_suggestions: int
     suggestions_with_returns: int
+    pending_suggestions: int  # Suggestions waiting for forward return calculation
 
     # Win rates
     win_rate_1d: float | None = None
@@ -272,6 +273,8 @@ class DiscoveryPerformanceResponse(BaseModel):
     pickers: list[PickerPerformanceResponse]
     total_pickers: int
     min_suggestions: int
+    limit: int | None = None  # Pagination limit
+    offset: int | None = None  # Pagination offset
 
 
 class ABTestMetricsResponse(BaseModel):

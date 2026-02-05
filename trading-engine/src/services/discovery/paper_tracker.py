@@ -154,11 +154,26 @@ async def create_hypothetical_trades(
 
         # Calculate hypothetical P&L from forward return
         if suggestion.forward_return_20d is not None:
-            # Assume base investment of $1000 per suggestion
-            base_value = 1000.0
-            hypothetical_trade.hypothetical_value = base_value
-            hypothetical_trade.hypothetical_pnl = base_value * (suggestion.forward_return_20d / 100.0)
-            hypothetical_trade.hypothetical_pnl_pct = suggestion.forward_return_20d
+            # Use suggested_price if available, otherwise fall back to fixed notional
+            if suggestion.suggested_price and suggestion.suggested_price > 0:
+                # Realistic pricing: use actual price at suggestion time
+                hypothetical_trade.hypothetical_price = float(suggestion.suggested_price)
+                base_value = hypothetical_trade.hypothetical_quantity * hypothetical_trade.hypothetical_price
+                hypothetical_trade.hypothetical_value = base_value
+                hypothetical_trade.hypothetical_pnl = base_value * (suggestion.forward_return_20d / 100.0)
+                hypothetical_trade.hypothetical_pnl_pct = suggestion.forward_return_20d
+            else:
+                # Fallback: use fixed $1000 notional (for older suggestions without price)
+                base_value = 1000.0
+                hypothetical_trade.hypothetical_value = base_value
+                hypothetical_trade.hypothetical_pnl = base_value * (suggestion.forward_return_20d / 100.0)
+                hypothetical_trade.hypothetical_pnl_pct = suggestion.forward_return_20d
+                log.debug(
+                    "paper_tracker_no_suggested_price",
+                    symbol=suggestion.symbol,
+                    suggestion_id=str(suggestion.id),
+                    message="Using fixed $1000 notional (suggested_price not available)",
+                )
 
         hypothetical_trades.append(hypothetical_trade)
 

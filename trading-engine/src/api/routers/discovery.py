@@ -19,6 +19,8 @@ router = APIRouter(prefix="/api/discovery", tags=["Discovery"])
 async def get_picker_performance(
     picker_name: str | None = Query(None, description="Filter by specific picker name"),
     min_suggestions: int = Query(10, ge=1, le=1000, description="Minimum suggestions required to include picker"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of pickers to return (pagination)"),
+    offset: int = Query(0, ge=0, description="Number of pickers to skip (pagination)"),
     session: AsyncSession = Depends(get_db),
 ) -> DiscoveryPerformanceResponse:
     """
@@ -32,6 +34,7 @@ async def get_picker_performance(
 
     Returns:
         Performance metrics for each picker, sorted by 20d average return (descending).
+        Includes pagination support for large datasets.
     """
     performances = await analyze_picker_performance(
         session=session,
@@ -39,12 +42,17 @@ async def get_picker_performance(
         min_suggestions=min_suggestions,
     )
 
+    # Apply pagination
+    total_pickers = len(performances)
+    paginated_performances = performances[offset : offset + limit]
+
     # Convert to response models
     picker_responses = [
         PickerPerformanceResponse(
             picker_name=p.picker_name,
             total_suggestions=p.total_suggestions,
             suggestions_with_returns=p.suggestions_with_returns,
+            pending_suggestions=p.pending_suggestions,
             win_rate_1d=p.win_rate_1d,
             win_rate_5d=p.win_rate_5d,
             win_rate_20d=p.win_rate_20d,
@@ -61,13 +69,15 @@ async def get_picker_performance(
             worst_return_5d=p.worst_return_5d,
             worst_return_20d=p.worst_return_20d,
         )
-        for p in performances
+        for p in paginated_performances
     ]
 
     return DiscoveryPerformanceResponse(
         pickers=picker_responses,
-        total_pickers=len(picker_responses),
+        total_pickers=total_pickers,
         min_suggestions=min_suggestions,
+        limit=limit,
+        offset=offset,
     )
 
 

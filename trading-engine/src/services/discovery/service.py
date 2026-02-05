@@ -17,6 +17,7 @@ from src.services.discovery.pickers.base import PickerResult
 from src.services.discovery.pickers.fuzzy import FuzzyPicker
 from src.services.discovery.pickers.llm import LLMPicker
 from src.services.discovery.pickers.metric import MetricPicker
+from src.services.market_data.service import MarketDataService
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -52,6 +53,7 @@ class SymbolDiscoveryService:
             self.pickers["llm"] = LLMPicker(db_session=db_session)
 
         self.ensemble = EnsembleCombiner()
+        self.market_data = MarketDataService()  # For capturing prices at suggestion time
 
     async def run_discovery_cycle(
         self,
@@ -247,6 +249,28 @@ class SymbolDiscoveryService:
         suggested_date = suggested_at.date()
         suggestions = []
 
+        # Collect all unique symbols to fetch prices in batch
+        all_symbols = set()
+        for results in picker_results.values():
+            for result in results:
+                all_symbols.add(result.symbol.upper())
+
+        # Fetch current prices for all symbols (for realistic paper trading)
+        symbol_prices = {}
+        if all_symbols:
+            try:
+                quotes = await self.market_data.get_quotes(list(all_symbols))
+                for quote in quotes:
+                    if quote and quote.price:
+                        symbol_prices[quote.symbol.upper()] = quote.price
+            except Exception as e:
+                log.warning(
+                    "discovery_price_fetch_failed",
+                    error=str(e),
+                    symbols=list(all_symbols),
+                )
+                # Continue without prices - suggestions will have suggested_price=None
+
         for picker_name, results in picker_results.items():
             for result in results:
                 symbol = result.symbol.upper()
@@ -267,12 +291,16 @@ class SymbolDiscoveryService:
                     )
                     continue
 
+                # Get price at suggestion time (if available)
+                suggested_price = symbol_prices.get(symbol)
+
                 suggestion = PickerSuggestion(
                     symbol=symbol,
                     picker_name=picker_name,
                     score=float(result.score),
                     reason=result.reason,
                     suggested_at=suggested_at,
+                    suggested_price=suggested_price,
                 )
                 session.add(suggestion)
                 suggestions.append(suggestion)

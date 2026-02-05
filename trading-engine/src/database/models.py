@@ -450,6 +450,9 @@ class PickerSuggestion(Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     suggested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     
+    # Price at suggestion time (for realistic paper trading)
+    suggested_price: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)  # Price when suggested
+    
     # Forward returns (calculated by background job)
     forward_return_1d: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)  # 1-day return %
     forward_return_5d: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)  # 5-day return %

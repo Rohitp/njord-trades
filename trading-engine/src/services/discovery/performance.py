@@ -25,6 +25,7 @@ class PickerPerformance:
     picker_name: str
     total_suggestions: int
     suggestions_with_returns: int
+    pending_suggestions: int  # Suggestions without calculated returns yet
 
     # Win rates (positive return = win)
     win_rate_1d: Optional[float] = None  # % of suggestions with positive 1d return
@@ -73,8 +74,8 @@ async def analyze_picker_performance(
     if picker_name:
         query = query.where(PickerSuggestion.picker_name == picker_name)
 
-    # Only include suggestions with calculated returns
-    query = query.where(PickerSuggestion.calculated_at.isnot(None))
+    # Include all suggestions (both with and without calculated returns)
+    # This allows showing pending suggestions that haven't been processed yet
 
     result = await session.execute(query)
     suggestions = result.scalars().all()
@@ -88,7 +89,11 @@ async def analyze_picker_performance(
     performances = []
 
     for picker, picker_suggestions in picker_data.items():
-        if len(picker_suggestions) < min_suggestions:
+        # Include pickers even if below min_suggestions if they have pending suggestions
+        # This helps operators understand why a picker might have disappeared
+        has_pending = any(s.calculated_at is None for s in picker_suggestions)
+        
+        if len(picker_suggestions) < min_suggestions and not has_pending:
             log.debug(
                 "picker_performance_insufficient_data",
                 picker=picker,
@@ -102,10 +107,14 @@ async def analyze_picker_performance(
         suggestions_5d = [s for s in picker_suggestions if s.forward_return_5d is not None]
         suggestions_20d = [s for s in picker_suggestions if s.forward_return_20d is not None]
 
+        # Count pending suggestions (without calculated_at)
+        pending = sum(1 for s in picker_suggestions if s.calculated_at is None)
+
         performance = PickerPerformance(
             picker_name=picker,
             total_suggestions=len(picker_suggestions),
             suggestions_with_returns=len(suggestions_20d),  # Use 20d as primary metric
+            pending_suggestions=pending,
         )
 
         # Calculate 1d metrics
