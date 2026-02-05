@@ -29,13 +29,18 @@ def get_langfuse_client():
     try:
         from langfuse import Langfuse
         
-        if not settings.langfuse.public_key and not settings.langfuse.host.startswith("http://localhost"):
-            log.warning("langfuse_not_configured", reason="Missing public_key or secret_key")
+        # For self-hosted Langfuse, public_key/secret_key are optional
+        # For cloud Langfuse, they are required
+        is_self_hosted = settings.langfuse.host.startswith("http://localhost") or settings.langfuse.host.startswith("http://127.0.0.1")
+        if not is_self_hosted and not settings.langfuse.public_key:
+            log.warning("langfuse_not_configured", reason="Missing public_key for cloud Langfuse")
             return None
         
+        # For self-hosted, keys can be empty
+        # For cloud, keys are required (checked above)
         _langfuse_client = Langfuse(
-            public_key=settings.langfuse.public_key or "",
-            secret_key=settings.langfuse.secret_key or "",
+            public_key=settings.langfuse.public_key or "pk-lf-0000000000000000000000",  # Dummy key for self-hosted
+            secret_key=settings.langfuse.secret_key or "sk-lf-0000000000000000000000",  # Dummy key for self-hosted
             host=settings.langfuse.host,
         )
         log.info("langfuse_initialized", host=settings.langfuse.host)

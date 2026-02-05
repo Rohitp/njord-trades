@@ -137,13 +137,45 @@ ALERT_TELEGRAM_CHAT_ID=your_chat_id
 
 **Langfuse** (OPTIONAL - for LLM tracing/debugging):
 ```bash
+# For self-hosted (default - runs in Docker):
+LANGFUSE_HOST=http://localhost:3010
+LANGFUSE_PROJECT=trading-system
+# public_key and secret_key not needed for self-hosted
+
+# For cloud version:
 LANGFUSE_PUBLIC_KEY=your_public_key
 LANGFUSE_SECRET_KEY=your_secret_key
-LANGFUSE_HOST=https://cloud.langfuse.com  # or http://localhost:3000 for self-hosted
+LANGFUSE_HOST=https://cloud.langfuse.com
 LANGFUSE_PROJECT=trading-system
 ```
 
-**Note**: Langfuse is **open source and free**. You can use the cloud version (requires API keys) or self-host it locally. It's **completely optional** - the system works fine without it. Langfuse integration is planned for Phase 9.3 but **not yet implemented** in the codebase.
+**Note**: Langfuse is **open source and free**. 
+- **Self-hosted** (default): Runs in Docker at `http://localhost:3010`, no API keys needed
+- **Cloud version**: Requires API keys from https://cloud.langfuse.com
+- **Completely optional** - the system works fine without it
+
+**Grafana** (OPTIONAL - for dashboards/metrics):
+```bash
+GRAFANA_ADMIN_USER=admin          # Default: admin
+GRAFANA_ADMIN_PASSWORD=admin     # Default: admin (CHANGE IN PRODUCTION!)
+```
+
+**Note**: Grafana runs in Docker and is accessible at `http://localhost:3045`. Default credentials are `admin/admin` - **change these in production!**
+
+**Prometheus** (no env vars needed):
+- Runs automatically in Docker
+- Accessible at `http://localhost:9045`
+- Scrapes metrics from trading engine at `http://localhost:8000/metrics`
+
+**Langfuse** (self-hosted - no env vars needed by default):
+- Runs automatically in Docker
+- Accessible at `http://localhost:3010`
+- Uses the same PostgreSQL database as the trading engine
+- Optional env vars for security:
+  ```bash
+  LANGFUSE_NEXTAUTH_SECRET=your-secret-key  # Default: your-secret-key-change-in-production
+  LANGFUSE_SALT=your-salt                   # Default: your-salt-change-in-production
+  ```
 
 ### 🔧 OPTIONAL (not yet implemented)
 

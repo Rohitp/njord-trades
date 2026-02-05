@@ -113,7 +113,7 @@ class LangfuseSettings(BaseSettings):
     
     public_key: str = ""
     secret_key: str = ""
-    host: str = Field(default="https://cloud.langfuse.com", description="Langfuse host URL (use https://cloud.langfuse.com for cloud or http://localhost:3000 for self-hosted)")
+    host: str = Field(default="http://localhost:3010", description="Langfuse host URL (use https://cloud.langfuse.com for cloud or http://localhost:3010 for self-hosted)")
     project: str = Field(default="trading-system", description="Langfuse project name")
     tracing_enabled: bool = Field(default=True, description="Enable Langfuse tracing")
 

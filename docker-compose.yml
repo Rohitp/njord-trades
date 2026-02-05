@@ -10,6 +10,7 @@ services:
       - "5556:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./trading-engine/docker-init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -38,8 +39,8 @@ services:
     image: grafana/grafana:latest
     container_name: trading-grafana
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_INSTALL_PLUGINS=
     ports:
       - "3045:3000"
@@ -50,6 +51,22 @@ services:
     depends_on:
       - prometheus
       - postgres
+    restart: unless-stopped
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: trading-langfuse
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/langfuse
+      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:-your-secret-key-change-in-production}
+      - NEXTAUTH_URL=http://localhost:3010
+      - SALT=${LANGFUSE_SALT:-your-salt-change-in-production}
+      - TELEMETRY_ENABLED=false
+    ports:
+      - "3010:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
