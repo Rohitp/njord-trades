@@ -145,8 +145,9 @@ class TestAnalyzePickerPerformance:
 
         # Should return 2 pickers (metric and fuzzy), llm excluded (only 2 suggestions)
         assert len(performances) == 2
-        assert performances[0].picker_name == "fuzzy"  # Sorted by avg_return_20d descending
-        assert performances[1].picker_name == "metric"
+        # Sorted by avg_return_20d descending: metric (5.0) > fuzzy (3.0)
+        assert performances[0].picker_name == "metric"
+        assert performances[1].picker_name == "fuzzy"
 
         # Check metric picker metrics
         metric_perf = next(p for p in performances if p.picker_name == "metric")

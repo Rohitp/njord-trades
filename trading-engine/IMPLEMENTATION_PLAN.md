@@ -6,7 +6,7 @@
 
 **Enhancements & Analysis** (Phases 8, 12-13): Discovery analysis, production integration, S&P 500 & sentiment data. **Enhancements to core functionality.**
 
-**Observability & Operations** (Phase 9): Grafana dashboards, LangSmith tracing, Ops Portal chat. **Monitoring and debugging tools.**
+**Observability & Operations** (Phase 9): Grafana dashboards, Langfuse tracing, Ops Portal chat. **Monitoring and debugging tools.**
 
 **Evaluation & Deployment** (Phases 10-11, 14-15): Testing framework, CI/CD, paper trading, production launch. **Infrastructure and validation.**
 
@@ -256,7 +256,7 @@
 
 ## Phase 9: Observability & Operations Portal
 
-**Status**: PLANNED | Grafana + LangSmith + Ops Portal architecture
+**Status**: PLANNED | Grafana + Langfuse + Ops Portal architecture
 
 ### 9.1 Telegram Bot Query Interface (REQUIRED)
 
@@ -312,7 +312,7 @@
 - [ ] Integrate with trade history queries (`Trade` model)
 - [ ] Integrate with performance analytics (calculate Sharpe, win rate, drawdown)
 - [ ] Integrate with log search (query structured logs from PostgreSQL or Loki)
-- [ ] Integrate with LangSmith for `/query` LLM calls (trace natural language queries)
+- [ ] Integrate with Langfuse for `/query` LLM calls (trace natural language queries)
 
 #### 9.1.4 Testing & Documentation
 - [ ] Test all commands with real Telegram bot
@@ -397,16 +397,19 @@
   - [ ] Error logs
   - [ ] System logs
 - [ ] Set up log search and filtering
-- [ ] Link logs to traces (via LangSmith)
+- [ ] Link logs to traces (via Langfuse)
 
-### 9.3 LangSmith Integration (REQUIRED)
+### 9.3 Langfuse Integration (REQUIRED)
 
-**Status**: REQUIRED | Provides LLM observability, tracing, and prompt visibility
+**Status**: REQUIRED | Provides LLM observability, tracing, and prompt visibility (open source, free)
 
-#### 9.3.1 LangSmith Setup
-- [ ] Add LangSmith dependencies to `pyproject.toml`
-- [ ] Configure LangSmith API key in `.env`
-- [ ] Set up LangSmith project for trading system
+#### 9.3.1 Langfuse Setup
+- [ ] Add Langfuse dependencies to `pyproject.toml` (`langfuse>=2.0.0`)
+- [ ] Configure Langfuse credentials in `.env`:
+  - [ ] `LANGFUSE_PUBLIC_KEY` (for cloud) or self-hosted URL
+  - [ ] `LANGFUSE_SECRET_KEY` (for cloud) or skip for self-hosted
+  - [ ] `LANGFUSE_HOST` (default: `https://cloud.langfuse.com` or `http://localhost:3000` for self-hosted)
+- [ ] Set up Langfuse project for trading system
 - [ ] Configure tracing for all LLM calls:
   - [ ] Data Agent LLM calls
   - [ ] Risk Manager LLM calls (if any)
@@ -415,8 +418,8 @@
   - [ ] Ops Portal chat LLM calls
 - [ ] Test tracing works
 
-#### 9.3.2 LangSmith Trace Integration
-- [ ] Instrument all agent LLM calls with LangSmith
+#### 9.3.2 Langfuse Trace Integration
+- [ ] Instrument all agent LLM calls with Langfuse
 - [ ] Add trace metadata:
   - [ ] Cycle ID
   - [ ] Symbol
@@ -424,11 +427,11 @@
   - [ ] Signal ID
 - [ ] Link traces to database events (via trace IDs)
 - [ ] Configure trace sampling (100% for production)
-- [ ] Test trace visibility in LangSmith UI
+- [ ] Test trace visibility in Langfuse UI
 
 #### 9.3.3 Prompt Visibility
-- [ ] All system prompts visible in LangSmith
-- [ ] All user prompts visible in LangSmith
+- [ ] All system prompts visible in Langfuse
+- [ ] All user prompts visible in Langfuse
 - [ ] Show intermediate reasoning steps
 - [ ] Display token usage and latency per call
 - [ ] Link traces to Grafana dashboards (via deep links)
@@ -454,7 +457,7 @@
   - [ ] Trade history queries
   - [ ] Performance analytics
   - [ ] Control commands (pause/resume)
-- [ ] Integrate LangSmith tracing for chat LLM calls
+- [ ] Integrate Langfuse tracing for chat LLM calls
 - [ ] Display chat history with trace links
 - [ ] Test chat interface
 
@@ -464,12 +467,12 @@
   - [ ] Performance dashboard links
   - [ ] Specific trade detail links
   - [ ] Log panel links
-- [ ] Generate deep links to LangSmith:
+- [ ] Generate deep links to Langfuse:
   - [ ] Trace links for LLM calls
   - [ ] Prompt visibility links
 - [ ] Embed links in chat responses
 - [ ] Add "View in Grafana" buttons in portal
-- [ ] Add "View Trace" buttons linking to LangSmith
+- [ ] Add "View Trace" buttons linking to Langfuse
 - [ ] Test deep link navigation
 
 #### 9.4.4 Portal Features
@@ -481,7 +484,7 @@
   - [ ] Portfolio summary
   - [ ] Circuit breaker status
 - [ ] Navigation to Grafana dashboards
-- [ ] Navigation to LangSmith traces
+- [ ] Navigation to Langfuse traces
 - [ ] Responsive design (mobile-friendly)
 - [ ] Test all portal features
 
@@ -489,11 +492,11 @@
 
 ## Phase 10: Evaluation Framework
 
-**Note**: LangSmith integration is now part of Phase 9.3. This phase focuses on eval datasets and testing.
+**Note**: Langfuse integration is now part of Phase 9.3. This phase focuses on eval datasets and testing.
 
-### 10.1 LangSmith Eval Integration
-- [ ] Use LangSmith for eval tracking (configured in Phase 9.3)
-- [ ] Set up eval projects in LangSmith
+### 10.1 Langfuse Eval Integration
+- [ ] Use Langfuse for eval tracking (configured in Phase 9.3)
+- [ ] Set up eval projects in Langfuse
 - [ ] Link evals to traces
 - [ ] Test eval tracking
 
@@ -729,7 +732,7 @@
 - [ ] No losses > 20%
 - [ ] All circuit breakers tested
 - [ ] Telegram bot query interface functional
-- [ ] Chainlit UI functional with dashboards and traceability
+- [ ] Grafana dashboards functional with Langfuse traceability
 - [ ] Evals passing
 
 ---
@@ -744,7 +747,7 @@
 - [ ] All LLM calls have retry logic
 - [ ] End-to-end pipeline executes
 - [ ] Telegram bot query interface functional
-- [ ] Chainlit UI functional with dashboards and traceability
+- [ ] Grafana dashboards functional with Langfuse traceability
 - [ ] Evals run and pass
 - [ ] Paper trading completed (2 weeks)
 - [ ] Ready to risk £500
@@ -773,9 +776,9 @@
 - Phase 8 (Discovery Analysis) → Phase 12 (Discovery Production)
 - Phase 9.1 (Telegram Bot Queries) → Phase 9.4 (Ops Portal) - Both provide query interfaces
 - Phase 9 (Grafana) → Phase 11 (Deployment) - Prometheus required
-- Phase 9 (LangSmith) → Phase 9 (Ops Portal) - Tracing required
-- Phase 9 (Ops Portal) → Phase 1 (pgvector) + Phase 4 (Vector Integration) + Phase 9 (LangSmith)
-- Phase 10 (Evals) → Phase 9 (LangSmith) - Uses LangSmith for eval tracking
+- Phase 9 (Langfuse) → Phase 9 (Ops Portal) - Tracing required
+- Phase 9 (Ops Portal) → Phase 1 (pgvector) + Phase 4 (Vector Integration) + Phase 9 (Langfuse)
+- Phase 10 (Evals) → Phase 9 (Langfuse) - Uses Langfuse for eval tracking
 - Phase 10 (Evals) → Can run in parallel
 - Phase 11 (Deployment) → Phase 14 (Paper Trading)
 - Phase 12 (Discovery Production) → Phase 13 (S&P 500 & Sentiment)

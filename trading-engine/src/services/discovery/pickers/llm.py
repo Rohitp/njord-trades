@@ -26,6 +26,12 @@ from src.utils.retry import retry_llm_call
 
 log = get_logger(__name__)
 
+# Try to import optional providers
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+except ImportError:
+    ChatGoogleGenerativeAI = None
+
 
 # System prompt for LLM symbol picker
 LLM_PICKER_SYSTEM_PROMPT = """You are a symbol discovery assistant for a quantitative trading system.
@@ -85,6 +91,7 @@ class LLMPicker(SymbolPicker):
         prefilter_with_metric: bool = True,  # Pre-filter with MetricPicker before LLM
         metric_prefilter_limit: int = 30,  # Top N symbols from MetricPicker to send to LLM
         db_session: AsyncSession | None = None,
+        provider: str | None = None,  # Override provider selection
     ):
         """
         Initialize LLMPicker.
@@ -95,12 +102,14 @@ class LLMPicker(SymbolPicker):
             prefilter_with_metric: If True, run MetricPicker first to filter candidates
             metric_prefilter_limit: Top N symbols from MetricPicker to send to LLM
             db_session: Optional database session for vector similarity search
+            provider: Override provider ("openai", "anthropic", "google", "deepseek", or "auto")
         """
         self.model_name = model_name or settings.discovery.llm_picker_model
         self.max_candidates = max_candidates or settings.discovery.llm_picker_max_candidates
         self.prefilter_with_metric = prefilter_with_metric if prefilter_with_metric is not None else settings.discovery.llm_picker_prefilter
         self.metric_prefilter_limit = metric_prefilter_limit or settings.discovery.llm_picker_prefilter_limit
         self.db_session = db_session
+        self.provider_override = provider
         self.llm = self._create_llm()
 
         self.asset_source = AlpacaAssetSource()
@@ -114,39 +123,117 @@ class LLMPicker(SymbolPicker):
         return "llm"
 
     def _create_llm(self) -> BaseChatModel:
-        """Create the LangChain LLM client."""
-        provider = self._infer_provider(self.model_name)
+        """Create the LangChain LLM client with fallback support."""
+        # Determine which provider to use
+        provider = self._get_provider()
+        
+        # Try to create LLM with primary provider
+        try:
+            return self._create_llm_for_provider(provider)
+        except (ValueError, AttributeError) as e:
+            # If primary provider fails, try fallback
+            if provider != settings.llm.fallback_provider:
+                log.warning(
+                    "llm_picker_provider_fallback",
+                    primary_provider=provider,
+                    fallback_provider=settings.llm.fallback_provider,
+                    error=str(e),
+                )
+                return self._create_llm_for_provider(settings.llm.fallback_provider)
+            raise
 
+    def _get_provider(self) -> str:
+        """Get the provider for LLMPicker."""
+        # 1. Explicit override
+        if self.provider_override and self.provider_override != "auto":
+            return self.provider_override.lower()
+        
+        # 2. LLM picker provider from config
+        if settings.llm.llm_picker_provider != "auto":
+            return settings.llm.llm_picker_provider.lower()
+        
+        # 3. Infer from model name
+        inferred = self._infer_provider(self.model_name)
+        if inferred:
+            return inferred
+        
+        # 4. Default provider
+        return settings.llm.default_provider.lower()
+
+    def _create_llm_for_provider(self, provider: str) -> BaseChatModel:
+        """Create LLM client for a specific provider."""
+        provider = provider.lower()
+        temperature = 0.3  # Slightly higher for creative selection
+        
         if provider == "openai":
+            if not settings.llm.openai_api_key:
+                raise ValueError("OpenAI API key not configured")
             return ChatOpenAI(
                 model=self.model_name,
                 api_key=settings.llm.openai_api_key,
                 max_retries=settings.llm.max_retries,
                 timeout=60.0,
-                temperature=0.3,  # Slightly higher for creative selection
+                temperature=temperature,
             )
         elif provider == "anthropic":
+            if not settings.llm.anthropic_api_key:
+                raise ValueError("Anthropic API key not configured")
             return ChatAnthropic(
                 model=self.model_name,
                 api_key=settings.llm.anthropic_api_key,
                 max_retries=settings.llm.max_retries,
                 timeout=60.0,
-                temperature=0.3,
+                temperature=temperature,
+            )
+        elif provider == "google":
+            if ChatGoogleGenerativeAI is None:
+                raise ValueError("langchain-google-genai not installed. Run: uv sync --extra google")
+            if not settings.llm.google_api_key:
+                raise ValueError("Google API key not configured")
+            return ChatGoogleGenerativeAI(
+                model=self.model_name,
+                google_api_key=settings.llm.google_api_key,
+                max_retries=settings.llm.max_retries,
+                timeout=60.0,
+                temperature=temperature,
+            )
+        elif provider == "deepseek":
+            # DeepSeek uses OpenAI-compatible API
+            if not settings.llm.deepseek_api_key:
+                raise ValueError("DeepSeek API key not configured")
+            return ChatOpenAI(
+                model=self.model_name,
+                api_key=settings.llm.deepseek_api_key,
+                openai_api_base="https://api.deepseek.com/v1",  # DeepSeek API endpoint
+                max_retries=settings.llm.max_retries,
+                timeout=60.0,
+                temperature=temperature,
             )
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    def _infer_provider(self, model_name: str) -> str:
+    def _infer_provider(self, model_name: str) -> str | None:
         """Infer LLM provider from model name."""
         model_lower = model_name.lower()
 
+        # OpenAI models
         if model_lower.startswith(("gpt-", "o1-", "o3-")):
             return "openai"
-        elif model_lower.startswith("claude-"):
+
+        # Anthropic models
+        if model_lower.startswith("claude"):
             return "anthropic"
-        else:
-            # Default to configured provider
-            return settings.llm.default_provider
+
+        # Google/Gemini models
+        if model_lower.startswith(("gemini-", "gemini-pro", "gemini-ultra")):
+            return "google"
+
+        # DeepSeek models
+        if model_lower.startswith("deepseek"):
+            return "deepseek"
+
+        # Ambiguous - return None to use default
+        return None
 
     async def pick(self, context: dict | None = None) -> List[PickerResult]:
         """

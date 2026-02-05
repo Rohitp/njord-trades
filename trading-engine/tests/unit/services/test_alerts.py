@@ -1,5 +1,13 @@
 """
 Unit tests for alert services.
+
+NOTE: All Telegram tests use mocks to prevent real notifications during test runs.
+This is intentional - tests should not send real Telegram messages.
+
+To test with real Telegram notifications (manual testing only):
+1. Set environment variables: ALERT_TELEGRAM_BOT_TOKEN and ALERT_TELEGRAM_CHAT_ID
+2. Run: pytest tests/unit/services/test_alerts.py::test_send_message_success --no-mock-telegram
+   (Note: This requires a custom test marker - not recommended for CI/CD)
 """
 
 import pytest

@@ -41,8 +41,8 @@ class TestRegisterScheduledJobs:
         register_scheduled_jobs(scheduler)
 
         jobs = scheduler.get_jobs()
-        # Should have 6 jobs: 2 trading cycles + 4 background jobs
-        assert len(jobs) == 6
+        # Should have 7 jobs: 2 trading cycles + 5 background jobs
+        assert len(jobs) == 7
 
         # Check job IDs
         job_ids = [job.id for job in jobs]
@@ -52,6 +52,7 @@ class TestRegisterScheduledJobs:
         assert "background_market_condition_embeddings" in job_ids
         assert "background_discovery_cycle" in job_ids
         assert "background_event_monitor" in job_ids
+        assert "background_forward_returns" in job_ids
 
         # Clean up
         stop_scheduler()
@@ -82,7 +83,7 @@ class TestGetScheduledJobs:
 
         jobs = get_scheduled_jobs()
         assert isinstance(jobs, list)
-        assert len(jobs) == 6  # 2 trading cycles + 4 background jobs
+        assert len(jobs) == 7  # 2 trading cycles + 5 background jobs
 
         for job in jobs:
             assert "id" in job

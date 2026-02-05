@@ -80,6 +80,7 @@ class DataAgent(BaseAgent):
         self,
         market_data_service: MarketDataService | None = None,
         model_name: str | None = None,
+        provider: str | None = None,
     ):
         """
         Initialize the Data Agent.
@@ -87,8 +88,9 @@ class DataAgent(BaseAgent):
         Args:
             market_data_service: Service to fetch market data. If None, creates default.
             model_name: Override the default model.
+            provider: Override the provider ("openai", "anthropic", "google", "deepseek", or "auto")
         """
-        super().__init__(model_name=model_name)
+        super().__init__(model_name=model_name, provider=provider)
         self.market_data = market_data_service or MarketDataService()
 
     async def run(self, state: TradingState) -> TradingState:

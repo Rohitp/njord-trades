@@ -36,14 +36,31 @@ class AlpacaSettings(BaseSettings):
 class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LLM_")
 
-    anthropic_api_key: str = ""
+    # API Keys for all providers
     openai_api_key: str = ""
-    default_provider: str = "anthropic"
-    # Fixed model names - use actual Claude model identifiers
-    data_agent_model: str = "claude-3-5-sonnet-20241022"
-    risk_agent_model: str = "claude-3-5-sonnet-20241022"
-    validator_model: str = "claude-3-5-sonnet-20241022"
-    meta_agent_model: str = "claude-3-opus-20240229"  # Highest quality for Meta-Agent
+    anthropic_api_key: str = ""
+    google_api_key: str = ""  # For Gemini
+    deepseek_api_key: str = ""
+    
+    # Provider configuration
+    default_provider: str = "openai"  # Primary provider (OpenAI)
+    fallback_provider: str = "anthropic"  # Fallback if primary fails
+    
+    # Model names - defaults to OpenAI, can be overridden per agent/picker
+    data_agent_model: str = "gpt-4o-mini"  # Fast, cost-effective for data agent
+    risk_agent_model: str = "gpt-4o-mini"  # Fast, cost-effective for risk manager
+    validator_model: str = "gpt-4o"  # Higher quality for validation
+    meta_agent_model: str = "gpt-4o"  # Highest quality for Meta-Agent
+    
+    # Provider selection per component (for experimentation)
+    # Options: "openai", "anthropic", "google", "deepseek", or "auto" (uses default/fallback)
+    data_agent_provider: str = Field(default="auto", description="Provider for DataAgent")
+    risk_agent_provider: str = Field(default="auto", description="Provider for RiskManager")
+    validator_provider: str = Field(default="auto", description="Provider for Validator")
+    meta_agent_provider: str = Field(default="auto", description="Provider for MetaAgent")
+    
+    # Discovery picker provider selection (for experimentation)
+    llm_picker_provider: str = Field(default="auto", description="Provider for LLMPicker")
     
     # Retry settings (required by instructions)
     max_retries: int = Field(default=3, description="Max retry attempts for LLM calls")
@@ -91,12 +108,14 @@ class VectorDBSettings(BaseSettings):
     collection_name: str = Field(default="trading_events", description="Vector collection name")
 
 
-class LangSmithSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="LANGSMITH_")
+class LangfuseSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="LANGFUSE_")
     
-    api_key: str = ""
-    project: str = Field(default="trading-system", description="LangSmith project name")
-    tracing_enabled: bool = Field(default=True, description="Enable LangSmith tracing")
+    public_key: str = ""
+    secret_key: str = ""
+    host: str = Field(default="https://cloud.langfuse.com", description="Langfuse host URL (use https://cloud.langfuse.com for cloud or http://localhost:3000 for self-hosted)")
+    project: str = Field(default="trading-system", description="Langfuse project name")
+    tracing_enabled: bool = Field(default=True, description="Enable Langfuse tracing")
 
 
 class SchedulingSettings(BaseSettings):
@@ -171,7 +190,7 @@ class DiscoverySettings(BaseSettings):
     
     # LLM Picker config
     llm_picker_model: str = Field(
-        default="claude-3-5-sonnet-20241022",
+        default="gpt-4o-mini",
         description="LLM model for LLMPicker"
     )
     llm_picker_max_candidates: int = Field(default=30, description="Max candidates to send to LLM (after pre-filtering)")
@@ -199,7 +218,7 @@ class Settings(BaseSettings):
     trading: TradingSettings = Field(default_factory=TradingSettings)
     alerts: AlertSettings = Field(default_factory=AlertSettings)
     vector_db: VectorDBSettings = Field(default_factory=VectorDBSettings)
-    langsmith: LangSmithSettings = Field(default_factory=LangSmithSettings)
+    langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     scheduling: SchedulingSettings = Field(default_factory=SchedulingSettings)
     event_monitor: EventMonitorSettings = Field(default_factory=EventMonitorSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
