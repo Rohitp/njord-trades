@@ -3,6 +3,7 @@
 from src.api.routers import (
     capital,
     cycles,
+    discovery,
     events,
     health,
     market_data,
@@ -17,6 +18,7 @@ from src.api.routers import (
 __all__ = [
     "capital",
     "cycles",
+    "discovery",
     "events",
     "health",
     "market_data",

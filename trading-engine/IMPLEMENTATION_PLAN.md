@@ -232,17 +232,19 @@
 - [x] Update suggestions with actual returns
 - [x] Test return calculation (unit tests complete)
 
-### 8.2 Performance API
-- [ ] Create `src/api/routers/discovery.py`
-- [ ] Implement `GET /api/discovery/performance` endpoint
-- [ ] Compare picker performance
-- [ ] Return win rates, average returns
-- [ ] Test API endpoint
+### 8.2 Performance API ✓
+- [x] Create `src/api/routers/discovery.py`
+- [x] Implement `GET /api/discovery/performance` endpoint
+- [x] Compare picker performance
+- [x] Return win rates, average returns
+- [x] Test API endpoint (unit tests complete)
 
-### 8.3 Paper Trade Tracker
-- [ ] Track hypothetical trades from suggestions
-- [ ] Compare to actual watchlist trades
-- [ ] Calculate A/B test metrics
+### 8.3 Paper Trade Tracker ✓
+- [x] Track hypothetical trades from suggestions
+- [x] Compare to actual watchlist trades
+- [x] Calculate A/B test metrics
+- [x] Create API endpoint `GET /api/discovery/ab-test`
+- [x] Write unit tests (service and API)
 
 ---
 
@@ -318,15 +320,27 @@
 
 **Status**: REQUIRED | Handles dashboards, alerts, log panels
 
-#### 9.2.1 Grafana Setup
+**Note**: Prometheus server is not currently running. The `/metrics` endpoint exists and exposes Prometheus-format metrics, but Prometheus server + Grafana setup will be done in this phase.
+
+#### 9.2.1 Prometheus Setup
+- [ ] Add Prometheus to `docker-compose.yml`
+- [ ] Create `prometheus.yml` configuration file
+- [ ] Configure Prometheus to scrape `/metrics` endpoint (scrape interval: 15s)
+- [ ] Set up persistent storage for Prometheus data
+- [ ] Configure retention policy (e.g., 30 days)
+- [ ] Test Prometheus can scrape metrics endpoint
+- [ ] Access Prometheus UI at `http://localhost:9045` (or configured port)
+
+#### 9.2.2 Grafana Setup
 - [ ] Add Grafana to `docker-compose.yml`
 - [ ] Configure Grafana with persistent storage
-- [ ] Set up Prometheus as data source
+- [ ] Set up Prometheus as data source in Grafana
 - [ ] Configure PostgreSQL as data source (for custom queries)
 - [ ] Set up authentication (API key or OAuth)
+- [ ] Access Grafana UI at `http://localhost:3045` (or configured port)
 - [ ] Create initial dashboard structure
 
-#### 9.2.2 Grafana Dashboards
+#### 9.2.3 Grafana Dashboards
 - [ ] **Portfolio Dashboard**:
   - [ ] Real-time portfolio value (time series panel)
   - [ ] Position breakdown (pie chart)
@@ -360,7 +374,7 @@
   - [ ] Agent execution time (from Prometheus metrics)
   - [ ] Error rates (from Prometheus metrics)
 
-#### 9.2.3 Grafana Alerts
+#### 9.2.4 Grafana Alerts
 - [ ] Configure alert rules for:
   - [ ] Circuit breaker activation
   - [ ] High drawdown (>15%)
@@ -369,7 +383,7 @@
 - [ ] Set up notification channels (Telegram integration)
 - [ ] Test alert delivery
 
-#### 9.2.4 Grafana Log Panels
+#### 9.2.5 Grafana Log Panels
 - [ ] Configure Loki as log aggregation (or use PostgreSQL log queries)
 - [ ] Create log panels for:
   - [ ] Trading cycle logs

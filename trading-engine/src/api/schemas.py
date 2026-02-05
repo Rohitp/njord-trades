@@ -228,3 +228,72 @@ class StrategyListResponse(BaseModel):
     strategies: list[StrategyResponse]
     total: int
 
+
+# =============================================================================
+# DISCOVERY SCHEMAS
+# =============================================================================
+
+
+class PickerPerformanceResponse(BaseModel):
+    """Schema for picker performance metrics."""
+    picker_name: str
+    total_suggestions: int
+    suggestions_with_returns: int
+
+    # Win rates
+    win_rate_1d: float | None = None
+    win_rate_5d: float | None = None
+    win_rate_20d: float | None = None
+
+    # Average returns
+    avg_return_1d: float | None = None
+    avg_return_5d: float | None = None
+    avg_return_20d: float | None = None
+
+    # Median returns
+    median_return_1d: float | None = None
+    median_return_5d: float | None = None
+    median_return_20d: float | None = None
+
+    # Best/worst returns
+    best_return_1d: float | None = None
+    best_return_5d: float | None = None
+    best_return_20d: float | None = None
+
+    worst_return_1d: float | None = None
+    worst_return_5d: float | None = None
+    worst_return_20d: float | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class DiscoveryPerformanceResponse(BaseModel):
+    """Schema for discovery performance API response."""
+    pickers: list[PickerPerformanceResponse]
+    total_pickers: int
+    min_suggestions: int
+
+
+class ABTestMetricsResponse(BaseModel):
+    """Schema for A/B test metrics comparing hypothetical vs actual trades."""
+    total_hypothetical_trades: int
+    total_actual_trades: int
+    matched_trades: int
+
+    # Win rates
+    hypothetical_win_rate: float | None = None
+    actual_win_rate: float | None = None
+
+    # Average returns
+    hypothetical_avg_return: float | None = None
+    actual_avg_return: float | None = None
+
+    # Total P&L
+    hypothetical_total_pnl: float | None = None
+    actual_total_pnl: float | None = None
+
+    # Divergence metrics
+    convergence_rate: float | None = None
+    hypothetical_outperformed: int = 0
+    actual_outperformed: int = 0
+

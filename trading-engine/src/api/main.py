@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from src.api.exceptions import TradingSystemError, trading_error_handler
 from src.api.middleware import RequestLoggingMiddleware
-from src.api.routers import capital, cycles, events, health, market_data, metrics, portfolio, scheduler, strategies, system, trades
+from src.api.routers import capital, cycles, discovery, events, health, market_data, metrics, portfolio, scheduler, strategies, system, trades
 from src.config import settings
 from src.utils.logging import get_logger, setup_logging
 
@@ -27,6 +27,7 @@ tags_metadata = [
     {"name": "Capital", "description": "Capital events (deposits, withdrawals, P&L)"},
     {"name": "Strategies", "description": "Trading strategy management"},
     {"name": "Metrics", "description": "Prometheus metrics for monitoring"},
+    {"name": "Discovery", "description": "Symbol discovery and picker performance"},
 ]
 
 
@@ -85,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(capital.router)
     app.include_router(strategies.router)
     app.include_router(metrics.router)
+    app.include_router(discovery.router)
 
     return app
 
