@@ -26,17 +26,25 @@ class EmbeddingService:
 
         Args:
             provider: Provider name (defaults to config value: "bge-small")
+            
+        Raises:
+            ImportError: If embedding dependencies are not installed
         """
         provider = provider or settings.embedding.provider
         self.provider_name = provider
 
-        if provider == "bge-small":
-            self.provider = BGESmallProvider()
-        else:
-            raise ValueError(f"Unknown embedding provider: {provider}")
+        try:
+            if provider == "bge-small":
+                self.provider = BGESmallProvider()
+            else:
+                raise ValueError(f"Unknown embedding provider: {provider}")
 
-        self.dimensions = self.provider.get_dimensions()
-        log.info("embedding_service_initialized", provider=provider, dimensions=self.dimensions)
+            self.dimensions = self.provider.get_dimensions()
+            log.info("embedding_service_initialized", provider=provider, dimensions=self.dimensions)
+        except ImportError as e:
+            error_msg = "sentence-transformers not installed. Install with: uv sync --extra embedding"
+            log.error("embedding_service_init_failed", error=error_msg, provider=provider)
+            raise ImportError(error_msg) from e
 
     async def embed_text(self, text: str) -> List[float]:
         """
@@ -47,8 +55,16 @@ class EmbeddingService:
 
         Returns:
             Embedding vector (384 dimensions for BGE-small-en)
+            
+        Raises:
+            ImportError: If embedding dependencies are not installed
         """
-        return await self.provider.embed(text)
+        try:
+            return await self.provider.embed(text)
+        except ImportError:
+            error_msg = "sentence-transformers not installed. Install with: uv sync --extra embedding"
+            log.error("embedding_failed", error=error_msg)
+            raise
 
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         """

@@ -301,13 +301,23 @@ class FuzzyPicker(SymbolPicker):
 
         context_text = " | ".join(context_parts)
 
-        # Find similar trades
-        similar_trades = await self.trade_embedding_service.find_similar_trades(
-            context_text=context_text,
-            limit=5,
-            min_similarity=0.7,
-            session=self.db_session,
-        )
+        # Find similar trades (gracefully handle missing embeddings)
+        try:
+            similar_trades = await self.trade_embedding_service.find_similar_trades(
+                context_text=context_text,
+                limit=5,
+                min_similarity=0.7,
+                session=self.db_session,
+            )
+        except Exception as e:
+            # Embeddings not available (sentence-transformers not installed, etc.)
+            # Continue without similarity adjustment
+            log.debug(
+                "fuzzy_picker_similarity_skipped",
+                symbol=symbol,
+                reason=str(e),
+            )
+            return 0.0  # No similarity adjustment available
 
         if not similar_trades:
             return 0.0  # No similar trades found

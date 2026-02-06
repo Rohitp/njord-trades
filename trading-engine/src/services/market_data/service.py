@@ -1,6 +1,4 @@
-"""Market data service with provider fallback logic."""
-
-from collections.abc import Awaitable, Callable
+"""Market data service - Alpaca only."""
 
 from src.config import settings
 from src.services.market_data.alpaca_provider import AlpacaProvider
@@ -10,7 +8,6 @@ from src.services.market_data.provider import (
     Quote,
     TechnicalIndicators,
 )
-from src.services.market_data.yfinance_provider import YFinanceProvider
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -18,120 +15,120 @@ log = get_logger(__name__)
 
 class MarketDataService:
     """
-    Market data service with automatic provider fallback.
+    Market data service using Alpaca as the sole provider.
 
-    Uses Alpaca as primary provider, falls back to yfinance on failure.
+    No fallback - if a symbol isn't in Alpaca, we can't trade it anyway.
     """
 
     def __init__(
         self,
-        primary: MarketDataProvider | None = None,
-        fallback: MarketDataProvider | None = None,
+        provider: MarketDataProvider | None = None,
     ):
-        self._primary = primary
-        self._fallback = fallback
+        self._provider = provider
 
     @property
-    def primary(self) -> MarketDataProvider:
-        """Lazy initialization of primary provider."""
-        if self._primary is None:
-            if settings.alpaca.api_key:
-                self._primary = AlpacaProvider()
-            else:
-                log.warning("alpaca_not_configured", message="Using yfinance as primary")
-                self._primary = YFinanceProvider()
-        return self._primary
-
-    @property
-    def fallback(self) -> MarketDataProvider:
-        """Lazy initialization of fallback provider."""
-        if self._fallback is None:
-            self._fallback = YFinanceProvider()
-        return self._fallback
+    def provider(self) -> MarketDataProvider:
+        """Lazy initialization of Alpaca provider."""
+        if self._provider is None:
+            if not settings.alpaca.api_key:
+                raise ValueError("Alpaca API keys are required - no fallback provider available")
+            self._provider = AlpacaProvider()
+        return self._provider
 
     async def get_quote(self, symbol: str) -> Quote:
-        """Get current quote with fallback."""
-        return await self._with_fallback(
-            lambda p: p.get_quote(symbol),
-            f"get_quote({symbol})",
-        )
+        """Get current quote from Alpaca."""
+        try:
+            result = await self.provider.get_quote(symbol)
+            log.debug(
+                "market_data_success", provider=self.provider.name, operation=f"get_quote({symbol})"
+            )
+            return result
+        except Exception as e:
+            log.error(
+                "market_data_failed",
+                provider=self.provider.name,
+                operation=f"get_quote({symbol})",
+                error=str(e),
+            )
+            raise
 
     async def get_quotes(self, symbols: list[str]) -> list[Quote]:
-        """Get multiple quotes with fallback."""
-        return await self._with_fallback(
-            lambda p: p.get_quotes(symbols),
-            f"get_quotes({symbols})",
-        )
+        """Get multiple quotes from Alpaca."""
+        try:
+            result = await self.provider.get_quotes(symbols)
+            log.debug(
+                "market_data_success",
+                provider=self.provider.name,
+                operation=f"get_quotes({len(symbols)} symbols)",
+            )
+            return result
+        except Exception as e:
+            log.error(
+                "market_data_failed",
+                provider=self.provider.name,
+                operation=f"get_quotes({len(symbols)} symbols)",
+                error=str(e),
+            )
+            raise
 
     async def get_bars(self, symbol: str, days: int = 200) -> list[OHLCV]:
-        """Get historical bars with fallback."""
-        return await self._with_fallback(
-            lambda p: p.get_bars(symbol, days),
-            f"get_bars({symbol}, {days})",
-        )
+        """Get historical bars from Alpaca."""
+        try:
+            result = await self.provider.get_bars(symbol, days)
+            log.debug(
+                "market_data_success",
+                provider=self.provider.name,
+                operation=f"get_bars({symbol}, {days})",
+            )
+            return result
+        except Exception as e:
+            log.error(
+                "market_data_failed",
+                provider=self.provider.name,
+                operation=f"get_bars({symbol}, {days})",
+                error=str(e),
+            )
+            raise
 
     async def get_technical_indicators(self, symbol: str) -> TechnicalIndicators:
-        """Get technical indicators with fallback."""
-        return await self._with_fallback(
-            lambda p: p.get_technical_indicators(symbol),
-            f"get_technical_indicators({symbol})",
-        )
+        """Get technical indicators from Alpaca."""
+        try:
+            result = await self.provider.get_technical_indicators(symbol)
+            log.debug(
+                "market_data_success",
+                provider=self.provider.name,
+                operation=f"get_technical_indicators({symbol})",
+            )
+            return result
+        except Exception as e:
+            log.error(
+                "market_data_failed",
+                provider=self.provider.name,
+                operation=f"get_technical_indicators({symbol})",
+                error=str(e),
+            )
+            raise
 
     async def get_indicators_batch(self, symbols: list[str]) -> dict[str, TechnicalIndicators]:
         """Get technical indicators for multiple symbols (parallelized)."""
         import asyncio
-        
+
         async def fetch_indicator(symbol: str) -> tuple[str, TechnicalIndicators | None]:
             try:
                 indicators = await self.get_technical_indicators(symbol)
                 return (symbol, indicators)
             except Exception as e:
-                log.error("indicator_fetch_failed", symbol=symbol, error=str(e))
+                log.debug("indicator_fetch_failed", symbol=symbol, error=str(e))
                 return (symbol, None)
-        
+
         tasks = [fetch_indicator(symbol) for symbol in symbols]
         results_list = await asyncio.gather(*tasks)
-        
-        # Filter out None results
-        results = {symbol: indicators for symbol, indicators in results_list if indicators is not None}
-        return results
 
-    async def _with_fallback(
-        self,
-        operation: Callable[[MarketDataProvider], Awaitable],
-        operation_name: str,
-    ):
-        """
-        Execute operation with fallback on failure.
-        
-        Args:
-            operation: Async function that takes a MarketDataProvider and returns a result
-            operation_name: Name of operation for logging
-        """
-        try:
-            result = await operation(self.primary)
-            log.debug("market_data_success", provider=self.primary.name, operation=operation_name)
-            return result
-        except Exception as e:
-            log.warning(
-                "market_data_fallback",
-                primary=self.primary.name,
-                fallback=self.fallback.name,
-                operation=operation_name,
-                error=str(e),
-            )
-            try:
-                result = await operation(self.fallback)
-                log.debug("market_data_fallback_success", provider=self.fallback.name, operation=operation_name)
-                return result
-            except Exception as fallback_error:
-                log.error(
-                    "market_data_failed",
-                    operation=operation_name,
-                    primary_error=str(e),
-                    fallback_error=str(fallback_error),
-                )
-                raise
+        # Filter out None results
+        results = {
+            symbol: indicators for symbol, indicators in results_list if indicators is not None
+        }
+        return results
 
 
 # Singleton instance

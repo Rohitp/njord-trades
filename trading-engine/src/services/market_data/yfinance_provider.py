@@ -56,20 +56,31 @@ class YFinanceProvider(MarketDataProvider):
         symbol = validate_symbol(symbol)
         
         def _fetch():
-            ticker = yf.Ticker(symbol)
-            info = ticker.fast_info
-            
-            if info.last_price is None:
-                raise ValueError(f"No price data available for {symbol}")
-            
-            return Quote(
-                symbol=symbol,
-                price=info.last_price,
-                bid=getattr(info, 'bid', None),
-                ask=getattr(info, 'ask', None),
-                volume=getattr(info, 'last_volume', None),
-                timestamp=datetime.now(),
-            )
+            try:
+                ticker = yf.Ticker(symbol)
+                info = ticker.fast_info
+                
+                # Check if symbol is delisted or invalid
+                if info.last_price is None:
+                    raise ValueError(f"Symbol {symbol} may be delisted or invalid (no price data)")
+                
+                return Quote(
+                    symbol=symbol,
+                    price=info.last_price,
+                    bid=getattr(info, 'bid', None),
+                    ask=getattr(info, 'ask', None),
+                    volume=getattr(info, 'last_volume', None),
+                    timestamp=datetime.now(),
+                )
+            except (KeyError, AttributeError) as e:
+                # Handle delisted symbols gracefully
+                # yfinance may raise KeyError when accessing missing fields for delisted symbols
+                raise ValueError(f"Symbol {symbol} may be delisted or invalid: {str(e)}")
+            except Exception as e:
+                # Re-raise other exceptions with context
+                if "delisted" in str(e).lower() or "no data" in str(e).lower():
+                    raise ValueError(f"Symbol {symbol} may be delisted or invalid")
+                raise
 
         return await asyncio.to_thread(_fetch)
 

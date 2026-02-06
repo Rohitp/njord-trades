@@ -147,10 +147,15 @@ class Validator(BaseAgent):
             # Query similar failed setups for each signal (if db_session available)
             similar_failures_map = {}
             if db_session:
-                trade_embedding_service = TradeEmbeddingService()
-                similar_failures_map = await self._find_similar_failures(
-                    approved_signals, assessment_map, db_session, trade_embedding_service
-                )
+                try:
+                    trade_embedding_service = TradeEmbeddingService()
+                    similar_failures_map = await self._find_similar_failures(
+                        approved_signals, assessment_map, db_session, trade_embedding_service
+                    )
+                except ImportError:
+                    # Embeddings not available - continue without similarity search
+                    log.debug("validator_embeddings_unavailable", reason="sentence-transformers not installed")
+                    similar_failures_map = {}
 
             user_prompt = self._build_user_prompt(
                 approved_signals, assessment_map, state, similar_failures_map

@@ -365,13 +365,18 @@ class ExecutionService:
             try:
                 from src.services.embeddings.trade_embedding import TradeEmbeddingService
 
-                embedding_service = TradeEmbeddingService()
-                await embedding_service.embed_trade(
-                    trade=trade,
-                    signal=signal,
-                    decision=decision,
-                    session=self.db_session,
-                )
+                try:
+                    embedding_service = TradeEmbeddingService()
+                    await embedding_service.embed_trade(
+                        trade=trade,
+                        signal=signal,
+                        decision=decision,
+                        session=self.db_session,
+                    )
+                except ImportError:
+                    # Embeddings not available - skip embedding generation
+                    log.debug("trade_embedding_skipped", reason="sentence-transformers not installed")
+                    # Continue - embedding failure shouldn't block trade execution
             except Exception as e:
                 log.warning(
                     "trade_embedding_failed",

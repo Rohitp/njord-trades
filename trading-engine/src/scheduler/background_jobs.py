@@ -54,7 +54,14 @@ async def generate_trade_embeddings_job() -> None:
                 log.info("background_job_trade_embeddings_no_trades")
                 return
 
-            embedding_service = TradeEmbeddingService()
+            try:
+                embedding_service = TradeEmbeddingService()
+            except ImportError:
+                log.warning(
+                    "background_job_embeddings_unavailable",
+                    reason="sentence-transformers not installed. Install with: uv sync --extra embedding",
+                )
+                return  # Skip job if embeddings not available
             processed = 0
             errors = 0
 
@@ -104,7 +111,15 @@ async def generate_market_condition_embeddings_job() -> None:
 
     try:
         async with async_session_factory() as session:
-            service = MarketConditionService()
+            try:
+                service = MarketConditionService()
+            except ImportError:
+                log.warning(
+                    "background_job_embeddings_unavailable",
+                    reason="sentence-transformers not installed. Install with: uv sync --extra embedding",
+                )
+                return  # Skip job if embeddings not available
+            
             timestamp = datetime.now()
 
             result = await service.embed_market_condition(

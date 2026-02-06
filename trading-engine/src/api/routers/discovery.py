@@ -1,6 +1,8 @@
 """Discovery and picker performance endpoints."""
 
-from fastapi import APIRouter, Depends, Query
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import get_db
@@ -11,8 +13,110 @@ from src.api.schemas import (
 )
 from src.services.discovery.paper_tracker import calculate_ab_test_metrics
 from src.services.discovery.performance import PickerPerformance, analyze_picker_performance
+from src.services.discovery.service import SymbolDiscoveryService
+from src.utils.logging import get_logger
+
+log = get_logger(__name__)
 
 router = APIRouter(prefix="/api/discovery", tags=["Discovery"])
+
+
+class DiscoveryRunRequest(BaseModel):
+    """Request to run a discovery cycle."""
+    
+    update_watchlist: bool = True
+    """If True, update the watchlist with discovered symbols."""
+    
+    timeout_seconds: int = 300
+    """Maximum time to wait for discovery cycle (default: 300 = 5 minutes)."""
+    
+    max_symbols: int = 500
+    """Maximum number of symbols to process in MetricPicker (default: 500)."""
+
+
+class DiscoveryRunResponse(BaseModel):
+    """Response from running a discovery cycle."""
+    
+    success: bool
+    discovered_count: int
+    suggestions_count: int
+    ensemble_count: int
+    watchlist_updates: int
+    message: str
+    completed_at: datetime
+
+
+@router.post("/run", response_model=DiscoveryRunResponse)
+async def run_discovery_cycle(
+    request: DiscoveryRunRequest,
+    session: AsyncSession = Depends(get_db),
+) -> DiscoveryRunResponse:
+    """
+    Manually trigger a symbol discovery cycle.
+    
+    Runs all enabled pickers (Metric, Fuzzy, LLM) in parallel, combines results,
+    and optionally updates the watchlist with top-ranked symbols.
+    
+    This is useful for:
+    - Initial setup when there are no watchlist symbols
+    - Manual discovery outside of scheduled cycles
+    - Testing picker configurations
+    
+    Returns:
+        Summary of discovery results including counts of discovered symbols,
+        picker suggestions, ensemble results, and watchlist updates.
+    """
+    start_time = datetime.now()
+    
+    try:
+        log.info("discovery_manual_trigger", update_watchlist=request.update_watchlist)
+        
+        service = SymbolDiscoveryService(db_session=session)
+        
+        # Build context (can include portfolio state, market conditions, etc.)
+        context = {
+            "max_symbols": request.max_symbols,  # Limit symbols processed
+            # Could add portfolio positions, market conditions, etc. in the future
+        }
+        
+        result = await service.run_discovery_cycle(
+            context=context,
+            update_watchlist=request.update_watchlist,
+            timeout_seconds=request.timeout_seconds,
+        )
+        
+        completed_at = datetime.now()
+        duration = (completed_at - start_time).total_seconds()
+        
+        log.info(
+            "discovery_manual_complete",
+            discovered_count=len(result["discovered_symbols"]),
+            suggestions_count=len(result["picker_suggestions"]),
+            ensemble_count=len(result["ensemble_results"]),
+            watchlist_updates=result["watchlist_updates"],
+            duration_seconds=duration,
+        )
+        
+        return DiscoveryRunResponse(
+            success=True,
+            discovered_count=len(result["discovered_symbols"]),
+            suggestions_count=len(result["picker_suggestions"]),
+            ensemble_count=len(result["ensemble_results"]),
+            watchlist_updates=result["watchlist_updates"],
+            message=f"Discovery cycle completed successfully. Found {len(result['ensemble_results'])} symbols.",
+            completed_at=completed_at,
+        )
+        
+    except Exception as e:
+        log.error(
+            "discovery_manual_failed",
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Discovery cycle failed: {str(e)}"
+        )
 
 
 @router.get("/performance", response_model=DiscoveryPerformanceResponse)

@@ -59,6 +59,7 @@ class SymbolDiscoveryService:
         self,
         context: dict | None = None,
         update_watchlist: bool = True,
+        timeout_seconds: int = 300,  # 5 minute timeout
     ) -> dict:
         """
         Run a complete discovery cycle.
@@ -108,12 +109,24 @@ class SymbolDiscoveryService:
                 )
                 return picker_name, []  # Return empty results on error
 
-        # Run all pickers concurrently
+        # Run all pickers concurrently with timeout
         tasks = [
             run_picker(picker_name, picker)
             for picker_name, picker in self.pickers.items()
         ]
-        results_list = await asyncio.gather(*tasks)
+        
+        try:
+            results_list = await asyncio.wait_for(
+                asyncio.gather(*tasks),
+                timeout=timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            log.error(
+                "discovery_cycle_timeout",
+                timeout_seconds=timeout_seconds,
+                pickers=list(self.pickers.keys()),
+            )
+            raise ValueError(f"Discovery cycle timed out after {timeout_seconds} seconds")
 
         # Convert results to dictionary
         picker_results = {name: results for name, results in results_list}
