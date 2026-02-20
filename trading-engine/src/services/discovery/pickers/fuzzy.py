@@ -3,7 +3,21 @@ FuzzyPicker - Weighted multi-factor scoring for symbol discovery.
 
 Uses liquidity, volatility, momentum, and sector balance to score symbols.
 Returns ranked list (0.0-1.0 scores) rather than binary pass/fail.
+
+.. deprecated::
+    FuzzyPicker is deprecated as of the two-stage discovery architecture redesign.
+    The new architecture uses:
+    - Stage 1: MetricPicker for efficient quantitative pre-filtering
+    - Stage 2: LLMPicker with enriched market data (quotes, indicators, news)
+
+    FuzzyPicker made ~16,000 API calls per cycle (8000 quotes + 8000 bars) which
+    was inefficient. The new LLMPicker fetches data only for pre-filtered candidates
+    (~50-100 symbols), reducing API calls to ~130-160 per cycle.
+
+    This class is kept for backwards compatibility but is no longer included in
+    the default enabled_pickers configuration.
 """
+import warnings
 
 from typing import List
 
@@ -33,6 +47,13 @@ class FuzzyPicker(SymbolPicker):
     """
     Weighted multi-factor scoring picker.
 
+    .. deprecated::
+        FuzzyPicker is deprecated. Use the two-stage architecture instead:
+        - MetricPicker for efficient pre-filtering
+        - LLMPicker with enriched data for intelligent selection
+
+        See the module docstring for details on why this was deprecated.
+
     Scores symbols based on:
     - Liquidity: Higher volume relative to average = better
     - Volatility: Moderate volatility preferred (not too low, not too high)
@@ -56,6 +77,9 @@ class FuzzyPicker(SymbolPicker):
         """
         Initialize FuzzyPicker with scoring weights.
 
+        .. deprecated::
+            FuzzyPicker is deprecated. Use MetricPicker + LLMPicker instead.
+
         Args:
             liquidity_weight: Weight for liquidity score (default: 0.3)
             volatility_weight: Weight for volatility score (default: 0.25)
@@ -66,6 +90,12 @@ class FuzzyPicker(SymbolPicker):
             db_session: Database session for similarity search (optional)
             fundamentals_provider: Fundamentals provider for sector data (optional)
         """
+        warnings.warn(
+            "FuzzyPicker is deprecated. Use the two-stage architecture "
+            "(MetricPicker + LLMPicker) instead for better efficiency.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         # Normalize base weights (excluding similarity which is applied as adjustment)
         base_total = liquidity_weight + volatility_weight + momentum_weight + sector_weight
         if base_total > 0:

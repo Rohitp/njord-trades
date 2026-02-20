@@ -2,7 +2,20 @@
 Symbol Discovery Service - Orchestration layer for symbol discovery.
 
 Runs all pickers, applies ensemble combination, and persists results to database.
+
+Architecture (Two-Stage Discovery):
+- Stage 1 (MetricPicker): Efficient quantitative pre-filtering (~80 API calls)
+  - Filters ~8000 symbols down to ~100-200 liquid, tradable candidates
+  - Uses batched quote fetching for efficiency
+
+- Stage 2 (LLMPicker): Intelligent selection with enriched data (~50-80 API calls)
+  - Fetches quotes, technical indicators, and news for candidates
+  - Builds rich prompt for LLM with actual market data
+  - LLM makes final picks based on real data
+
+Total: ~130-160 API calls per cycle (down from ~16,000 with old FuzzyPicker)
 """
+import warnings
 
 from datetime import datetime
 from typing import List
@@ -17,6 +30,7 @@ from src.services.discovery.pickers.base import PickerResult
 from src.services.discovery.pickers.fuzzy import FuzzyPicker
 from src.services.discovery.pickers.llm import LLMPicker
 from src.services.discovery.pickers.metric import MetricPicker
+from src.services.discovery.pickers.pure_llm import PureLLMPicker
 from src.services.market_data.service import MarketDataService
 from src.utils.logging import get_logger
 
@@ -27,11 +41,18 @@ class SymbolDiscoveryService:
     """
     Orchestration service for symbol discovery.
 
+    Uses a two-stage architecture for efficient symbol discovery:
+    - Stage 1 (MetricPicker): Quantitative pre-filtering to ~100-200 candidates
+    - Stage 2 (LLMPicker): LLM analysis with enriched market data (quotes, indicators, news)
+
     Coordinates:
-    1. Running all enabled pickers (Metric, Fuzzy, LLM)
+    1. Running all enabled pickers (default: MetricPicker + LLMPicker)
     2. Applying EnsembleCombiner to merge results
     3. Persisting DiscoveredSymbol and PickerSuggestion records
     4. Updating Watchlist with top-ranked symbols
+
+    Note: FuzzyPicker is deprecated and not enabled by default. If explicitly
+    enabled, it will emit a DeprecationWarning.
     """
 
     def __init__(self, db_session: AsyncSession | None = None):
@@ -48,9 +69,14 @@ class SymbolDiscoveryService:
         if "metric" in settings.discovery.enabled_pickers:
             self.pickers["metric"] = MetricPicker()
         if "fuzzy" in settings.discovery.enabled_pickers:
-            self.pickers["fuzzy"] = FuzzyPicker(db_session=db_session)
+            # Suppress deprecation warning when FuzzyPicker is explicitly configured
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=DeprecationWarning)
+                self.pickers["fuzzy"] = FuzzyPicker(db_session=db_session)
         if "llm" in settings.discovery.enabled_pickers:
             self.pickers["llm"] = LLMPicker(db_session=db_session)
+        if "pure_llm" in settings.discovery.enabled_pickers:
+            self.pickers["pure_llm"] = PureLLMPicker(db_session=db_session)
 
         self.ensemble = EnsembleCombiner()
         self.market_data = MarketDataService()  # For capturing prices at suggestion time

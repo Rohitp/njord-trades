@@ -6,6 +6,12 @@ from src.services.market_data.fundamentals import (
     Fundamentals,
     FundamentalsProvider,
 )
+from src.services.market_data.news import (
+    NewsItem,
+    NewsService,
+    RedditSentiment,
+    news_service,
+)
 from src.services.market_data.provider import MarketDataProvider, Quote, OHLCV, TechnicalIndicators
 from src.services.market_data.service import MarketDataService, market_data_service
 
@@ -20,4 +26,8 @@ __all__ = [
     "AlpacaFundamentalsProvider",
     "CachedFundamentalsProvider",
     "Fundamentals",
+    "NewsItem",
+    "NewsService",
+    "RedditSentiment",
+    "news_service",
 ]

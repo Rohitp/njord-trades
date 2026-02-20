@@ -174,20 +174,43 @@ class EmbeddingSettings(BaseSettings):
     min_similarity: float = Field(default=0.7, description="Minimum similarity threshold (0.0-1.0) for vector searches")
 
 
+class NewsSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="NEWS_")
+
+    # Reddit API credentials
+    reddit_client_id: str = Field(default="", description="Reddit API client ID")
+    reddit_client_secret: str = Field(default="", description="Reddit API client secret")
+    reddit_user_agent: str = Field(default="trading-engine/1.0", description="Reddit API user agent")
+
+    # Cache settings
+    cache_ttl_minutes: int = Field(default=30, description="Cache TTL for news items in minutes")
+
+    # News limits
+    max_items_per_symbol: int = Field(default=5, description="Max news items per symbol")
+
+    # Enabled sources
+    enabled_sources: list[str] = Field(
+        default_factory=lambda: ["yfinance", "google", "reddit"],
+        description="List of enabled news sources"
+    )
+
+
 class DiscoverySettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DISCOVERY_")
 
     # Picker weights for ensemble (must sum to ~1.0)
-    metric_weight: float = Field(default=0.3, description="Weight for MetricPicker in ensemble")
-    fuzzy_weight: float = Field(default=0.4, description="Weight for FuzzyPicker in ensemble")
-    llm_weight: float = Field(default=0.3, description="Weight for LLMPicker in ensemble")
-    
-    # Enabled pickers
+    # FuzzyPicker is deprecated - weight kept for backwards compatibility but not used
+    metric_weight: float = Field(default=0.4, description="Weight for MetricPicker in ensemble")
+    fuzzy_weight: float = Field(default=0.0, description="DEPRECATED: FuzzyPicker weight (not used)")
+    llm_weight: float = Field(default=0.6, description="Weight for LLMPicker in ensemble")
+    pure_llm_weight: float = Field(default=0.5, description="Weight for PureLLMPicker in ensemble")
+
+    # Enabled pickers (FuzzyPicker removed - now using two-stage architecture)
     enabled_pickers: list[str] = Field(
-        default_factory=lambda: ["metric", "fuzzy", "llm"],
+        default_factory=lambda: ["metric", "llm"],
         description="List of enabled pickers"
     )
-    
+
     # LLM Picker config
     llm_picker_model: str = Field(
         default="gpt-4o-mini",
@@ -195,8 +218,14 @@ class DiscoverySettings(BaseSettings):
     )
     llm_picker_max_candidates: int = Field(default=30, description="Max candidates to send to LLM (after pre-filtering)")
     llm_picker_prefilter: bool = Field(default=True, description="Pre-filter candidates with MetricPicker before LLM")
-    llm_picker_prefilter_limit: int = Field(default=30, description="Top N symbols from MetricPicker to send to LLM")
-    
+    llm_picker_prefilter_limit: int = Field(default=50, description="Top N symbols from MetricPicker to send to LLM")
+
+    # LLM Picker enrichment settings
+    llm_picker_fetch_indicators: bool = Field(default=True, description="Fetch technical indicators for candidates")
+    llm_picker_indicator_limit: int = Field(default=50, description="Max symbols to fetch indicators for")
+    llm_picker_fetch_news: bool = Field(default=True, description="Fetch news for top candidates")
+    llm_picker_news_limit: int = Field(default=30, description="Max symbols to fetch news for")
+
     # Discovery schedule
     interval_hours: int = Field(default=4, description="Discovery job interval (hours)")
     max_watchlist_size: int = Field(default=20, description="Maximum symbols in watchlist")
@@ -224,6 +253,7 @@ class Settings(BaseSettings):
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     discovery: DiscoverySettings = Field(default_factory=DiscoverySettings)
+    news: NewsSettings = Field(default_factory=NewsSettings)
 
 
 settings = Settings()

@@ -31,6 +31,7 @@ class EnsembleCombiner:
         metric_weight: float | None = None,
         fuzzy_weight: float | None = None,
         llm_weight: float | None = None,
+        pure_llm_weight: float | None = None,
     ):
         """
         Initialize EnsembleCombiner with picker weights.
@@ -39,28 +40,20 @@ class EnsembleCombiner:
             metric_weight: Weight for MetricPicker (default: from config)
             fuzzy_weight: Weight for FuzzyPicker (default: from config)
             llm_weight: Weight for LLMPicker (default: from config)
+            pure_llm_weight: Weight for PureLLMPicker (default: from config)
         """
-        self.metric_weight = metric_weight or settings.discovery.metric_weight
-        self.fuzzy_weight = fuzzy_weight or settings.discovery.fuzzy_weight
-        self.llm_weight = llm_weight or settings.discovery.llm_weight
+        self.metric_weight = metric_weight if metric_weight is not None else settings.discovery.metric_weight
+        self.fuzzy_weight = fuzzy_weight if fuzzy_weight is not None else settings.discovery.fuzzy_weight
+        self.llm_weight = llm_weight if llm_weight is not None else settings.discovery.llm_weight
+        self.pure_llm_weight = pure_llm_weight if pure_llm_weight is not None else settings.discovery.pure_llm_weight
 
-        # Normalize weights to sum to 1.0
-        total_weight = self.metric_weight + self.fuzzy_weight + self.llm_weight
-        if total_weight > 0:
-            self.metric_weight /= total_weight
-            self.fuzzy_weight /= total_weight
-            self.llm_weight /= total_weight
-        else:
-            # Default equal weights if all zero
-            self.metric_weight = 1.0 / 3.0
-            self.fuzzy_weight = 1.0 / 3.0
-            self.llm_weight = 1.0 / 3.0
-
-        # Map picker names to weights
+        # Map picker names to weights (no normalization - weights are relative)
+        # Normalization happens per-symbol based on which pickers found it
         self.picker_weights = {
             "metric": self.metric_weight,
             "fuzzy": self.fuzzy_weight,
             "llm": self.llm_weight,
+            "pure_llm": self.pure_llm_weight,
         }
 
     def combine(
